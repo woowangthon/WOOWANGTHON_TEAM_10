@@ -9,7 +9,7 @@ import type pg from "pg";
 import { requireMembership } from "./access.ts";
 import { audit, getPool, withTx, type Db } from "./db.ts";
 import { badRequest, conflict, notFound } from "./errors.ts";
-import { bool, text } from "./validate.ts";
+import { bool, cleanText, text } from "./validate.ts";
 
 export const NOTE_KINDS = ["proposal", "guess", "question", "objection"] as const;
 export type NoteKind = (typeof NOTE_KINDS)[number];
@@ -47,17 +47,17 @@ export function parseRestated(value: unknown): Restated {
   const strList = (x: unknown, field: string) => {
     if (!Array.isArray(x) || x.length > 10 || !x.every((s) => typeof s === "string" && s.length <= 300))
       throw badRequest(`${field} 형식이 올바르지 않습니다.`);
-    return x as string[];
+    return (x as string[]).map(cleanText).filter(Boolean);
   };
   if (!NOTE_KINDS.includes(v.kind as NoteKind)) throw badRequest("메모 성격 값이 올바르지 않습니다.");
   const cq = v.clarifying_question;
   if (cq !== null && (typeof cq !== "string" || cq.length > 300)) throw badRequest("보충 질문 형식이 올바르지 않습니다.");
   return {
-    summary: text(v.summary, "정리문", { min: 1, max: 600 }),
+    summary: text(typeof v.summary === "string" ? cleanText(v.summary) : v.summary, "정리문", { min: 1, max: 600 }),
     kind: v.kind as NoteKind,
     conditions: strList(v.conditions, "조건"),
     uncertainties: strList(v.uncertainties, "불확실성"),
-    clarifying_question: cq as string | null,
+    clarifying_question: typeof cq === "string" ? cleanText(cq) || null : null,
   };
 }
 
@@ -86,14 +86,27 @@ async function latestVersion(tx: Db, noteId: string) {
   return r.rows[0];
 }
 
-/** 이 메모의 버전을 근거로 쓴 조언 요청을 무효화한다. */
+const NOTE_VERSION_IDS = "(select coalesce(array_agg(id), '{}') from note_versions where note_id = $1)";
+
+/**
+ * 이 메모(어느 버전이든)를 모델·화면에 넘겼던 조언 요청을 무효화한다.
+ * 모델은 받은 메모 전체의 영향을 받을 수 있으므로, 근거로 인용하지 않은 항목까지 요청 단위로 무효화한다.
+ */
 export async function invalidateAdviceForNote(tx: Db, noteId: string): Promise<number> {
   const r = await tx.query(
-    `update advice_requests set status = 'invalidated'
-     where status in ('pending', 'ok') and id in (
-       select i.request_id from advice_items i
-       where i.evidence_version_ids && (select coalesce(array_agg(id), '{}') from note_versions where note_id = $1)
-     )`,
+    `update advice_requests
+     set status = 'invalidated', error = coalesce(error, 'source_changed'), finished_at = coalesce(finished_at, now())
+     where status in ('pending', 'ok') and input_version_ids && ${NOTE_VERSION_IDS}`,
+    [noteId],
+  );
+  return r.rowCount ?? 0;
+}
+
+/** 메모 삭제 시: 그 메모를 넘겼던 요청의 조언 본문·인용을 DB 에서 지운다. */
+export async function purgeAdviceForNote(tx: Db, noteId: string): Promise<number> {
+  const r = await tx.query(
+    `update advice_items set body = '', quotes = '[]'::jsonb, purged = true
+     where request_id in (select id from advice_requests where input_version_ids && ${NOTE_VERSION_IDS})`,
     [noteId],
   );
   return r.rowCount ?? 0;
@@ -120,12 +133,20 @@ export async function createNote(userId: string, teamId: string, input: { rawTex
 }
 
 /** AI 정리 결과를 최신 미확인 버전에 붙인다. 확인은 별도 단계(confirmVersion). */
-export async function setRestatement(userId: string, noteId: string, versionId: string, restatedInput: unknown) {
+export async function setRestatement(
+  userId: string,
+  noteId: string,
+  versionId: string,
+  restatedInput: unknown,
+  opts: { expectedHash?: string } = {},
+) {
   const restated = parseRestated(restatedInput);
   return withTx(async (tx) => {
     const note = await lockOwnNote(tx, userId, noteId);
     if (!note.allow_external_ai) throw conflict("이 메모는 AI 정리를 허용하지 않았습니다.");
     const version = await getVersionOf(tx, noteId, versionId);
+    if (opts.expectedHash !== undefined && version.content_hash !== opts.expectedHash)
+      throw conflict("정리하는 사이 메모가 바뀌었습니다. 다시 정리해 주세요.");
     const latest = await latestVersion(tx, noteId);
     if (latest.id !== version.id || version.intent_state !== "unconfirmed")
       throw conflict("최신 미확인 버전에만 정리 결과를 붙일 수 있습니다.");
@@ -244,8 +265,9 @@ export async function deleteNote(userId: string, noteId: string) {
   return withTx(async (tx) => {
     await lockOwnNote(tx, userId, noteId);
     const invalidated = await invalidateAdviceForNote(tx, noteId);
+    const purged = await purgeAdviceForNote(tx, noteId);
     await tx.query("delete from notes where id = $1", [noteId]);
-    await audit(tx, userId, "note.delete", noteId, { invalidated });
+    await audit(tx, userId, "note.delete", noteId, { invalidated, purged });
     return { noteId, deleted: true, invalidatedAdvice: invalidated };
   });
 }
@@ -298,7 +320,7 @@ export async function listNotes(userId: string, teamId: string) {
   const db = getPool();
   await requireMembership(db, userId, teamId);
   const r = await db.query(
-    `select n.id, n.share_state, n.author_id = $2 as is_author, u.display_name as author_name, n.updated_at,
+    `select n.id, n.share_state, n.allow_external_ai, n.author_id = $2 as is_author, u.display_name as author_name, n.updated_at,
             v.id as version_id, v.content_hash, v.raw_text, v.restated, v.intent_state, v.version
      from notes n
      join users u on u.id = n.author_id

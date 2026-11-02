@@ -1,11 +1,16 @@
 "use client";
 import { use, useEffect, useState } from "react";
+import { restatementWarnings } from "../../../lib/restate-check.ts";
 import { api } from "../../api-client.ts";
 
+type Restated = { summary: string; kind: string; conditions: string[]; uncertainties: string[]; clarifying_question: string | null };
 type NoteRow = {
-  id: string; share_state: "draft" | "shared" | "withdrawn"; is_author: boolean; author_name: string;
-  version_id: string; content_hash: string; raw_text: string; intent_state: string; version: number;
+  id: string; share_state: "draft" | "shared" | "withdrawn"; is_author: boolean; author_name: string; allow_external_ai: boolean;
+  version_id: string; content_hash: string; raw_text: string; restated: Restated | null; intent_state: string; version: number;
 };
+type AiConfig = { provider: string; available: boolean; fake: boolean };
+
+const KIND_LABEL: Record<string, string> = { proposal: "제안", guess: "추측", question: "질문", objection: "반론" };
 type Task = { id: string; title: string; purpose: string; audience: string; constraints: string };
 
 const STATE_LABEL = { draft: "초안 (나만 봄)", shared: "팀에 공유됨", withdrawn: "철회됨" } as const;
@@ -19,6 +24,7 @@ export default function TeamPage({ params }: { params: Promise<{ teamId: string 
   const [draft, setDraft] = useState("");
   const [allowAi, setAllowAi] = useState(true);
   const [task, setTask] = useState({ title: "", purpose: "", audience: "", constraints: "" });
+  const [ai, setAi] = useState<AiConfig>({ provider: "none", available: false, fake: false });
 
   const load = async () => {
     try {
@@ -29,6 +35,7 @@ export default function TeamPage({ params }: { params: Promise<{ teamId: string 
   useEffect(() => {
     load();
     api(`/api/teams/${teamId}/invite`).then((r) => setInvite(r.inviteCode), () => setInvite(null));
+    api<{ ai: AiConfig }>("/api/config").then((c) => setAi(c.ai), () => {});
   }, [teamId]);
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -41,6 +48,7 @@ export default function TeamPage({ params }: { params: Promise<{ teamId: string 
       <p><a href="/">← 팀 목록</a></p>
       <h1>팀 공간</h1>
       {invite && <p className="muted">초대 코드 (팀장에게만 보임): <code>{invite}</code></p>}
+      {ai.fake && <div className="banner">개발용 가짜 응답 모드입니다. 화면의 AI 결과는 실제 AI가 만든 것이 아닙니다.</div>}
       {error && <p className="error">{error}</p>}
 
       <h2>생각 남기기</h2>
@@ -54,7 +62,8 @@ export default function TeamPage({ params }: { params: Promise<{ teamId: string 
             onClick={() => act(() => api(`/api/teams/${teamId}/notes`, { body: { rawText: draft, allowExternalAi: allowAi } }).then(() => setDraft("")))}>
             초안 저장</button>
         </div>
-        <p className="muted">초안은 나만 봅니다. 확인 후 &lsquo;공유&rsquo;를 눌러야 팀원에게 보입니다. (AI 정리 기능은 다음 단계에서 추가)</p>
+        <p className="muted">초안은 나만 봅니다. 확인 후 &lsquo;공유&rsquo;를 눌러야 팀원에게 보입니다.
+          {!ai.available && " 지금은 AI가 연결되지 않아 원문 그대로 등록합니다."}</p>
       </div>
 
       <h2>메모</h2>
@@ -65,12 +74,25 @@ export default function TeamPage({ params }: { params: Promise<{ teamId: string 
             <span className="muted">{n.author_name} · v{n.version}</span>
             <span className={`badge ${n.share_state}`}>{STATE_LABEL[n.share_state]}</span>
           </div>
-          <pre className="raw">{n.raw_text}</pre>
+          {n.restated && n.intent_state !== "unconfirmed" && (
+            <p style={{ margin: "6px 0 0" }}><strong>{n.restated.summary}</strong>{" "}
+              <span className="muted">({KIND_LABEL[n.restated.kind] ?? n.restated.kind} · 작성자 확인)</span></p>
+          )}
+          {n.is_author && n.share_state !== "shared" && n.intent_state === "unconfirmed" && n.restated
+            ? <Compare note={n} act={act} />
+            : <pre className="raw">{n.raw_text}</pre>}
           {n.is_author && (
             <div className="row">
-              {n.share_state !== "shared" && n.intent_state === "unconfirmed" && (
-                <button onClick={() => act(() => api(`/api/notes/${n.id}/versions/${n.version_id}/confirm`, {
-                  body: { choice: "raw_only", expectedHash: n.content_hash } }))}>원문 그대로 확인</button>
+              {n.share_state !== "shared" && n.intent_state === "unconfirmed" && !n.restated && (
+                <>
+                  {n.allow_external_ai && ai.available && (
+                    <button onClick={() => act(() => api(`/api/notes/${n.id}/versions/${n.version_id}/restate`, { body: {} }))}>
+                      AI로 정리</button>
+                  )}
+                  <button onClick={() => act(() => api(`/api/notes/${n.id}/versions/${n.version_id}/confirm`, {
+                    body: { choice: "raw_only", expectedHash: n.content_hash } }))}>원문 그대로 확인</button>
+                  {!n.allow_external_ai && <span className="muted">AI 정리 안 함</span>}
+                </>
               )}
               {n.share_state !== "shared" && n.intent_state !== "unconfirmed" && (
                 <button className="primary" onClick={() => act(() => api(`/api/notes/${n.id}/versions/${n.version_id}/share`, { body: {} }))}>
@@ -99,9 +121,52 @@ export default function TeamPage({ params }: { params: Promise<{ teamId: string 
         <div className="card" key={t.id}>
           <strong>{t.title}</strong>
           <div className="muted">{[t.purpose, t.audience, t.constraints].filter(Boolean).join(" · ")}</div>
-          <p className="muted">조언 요청은 다음 단계에서 추가됩니다.</p>
+          <p style={{ margin: "6px 0 0" }}><a href={`/teams/${teamId}/tasks/${t.id}`}>팀 기억에서 조언 받기 →</a></p>
         </div>
       ))}
     </main>
+  );
+}
+
+/** 원문과 AI 정리를 나란히 보여주고 작성자가 의도를 확인한다 (원안 §7.1-5~6). */
+function Compare({ note, act }: { note: NoteRow; act: (fn: () => Promise<unknown>) => Promise<void> }) {
+  const r = note.restated!;
+  const warnings = restatementWarnings(note.raw_text, r);
+  const [editing, setEditing] = useState(false);
+  const [summary, setSummary] = useState(r.summary);
+  const confirm = (choice: "confirmed" | "edited" | "raw_only", editedSummary?: string) =>
+    act(() => api(`/api/notes/${note.id}/versions/${note.version_id}/confirm`, {
+      body: { choice, expectedHash: note.content_hash, editedSummary } }));
+  return (
+    <div>
+      <div className="compare">
+        <div><h3>내가 쓴 원문</h3><pre className="raw">{note.raw_text}</pre></div>
+        <div>
+          <h3>AI 정리 ({KIND_LABEL[r.kind] ?? r.kind})</h3>
+          {editing
+            ? <textarea value={summary} maxLength={600} onChange={(e) => setSummary(e.target.value)} />
+            : <p style={{ margin: 0 }}>{r.summary}</p>}
+          {r.conditions.length > 0 && <><div className="muted">조건</div><ul>{r.conditions.map((c, i) => <li key={i}>{c}</li>)}</ul></>}
+          {r.uncertainties.length > 0 && <><div className="muted">불확실한 점</div><ul>{r.uncertainties.map((c, i) => <li key={i}>{c}</li>)}</ul></>}
+          {r.clarifying_question && <p className="muted">보충 질문: {r.clarifying_question}</p>}
+        </div>
+      </div>
+      {warnings.map((w, i) => <p key={i} className="warn">⚠ {w}</p>)}
+      <div className="row">
+        {editing ? (
+          <>
+            <button className="primary" disabled={!summary.trim()} onClick={() => confirm("edited", summary)}>고친 내용으로 확인</button>
+            <button onClick={() => { setEditing(false); setSummary(r.summary); }}>취소</button>
+          </>
+        ) : (
+          <>
+            <button className="primary" onClick={() => confirm("confirmed")}>의도 맞음</button>
+            <button onClick={() => setEditing(true)}>직접 고침</button>
+            <button onClick={() => confirm("raw_only")}>원문 그대로</button>
+          </>
+        )}
+      </div>
+      <p className="muted">공유하고 싶지 않으면 아무것도 누르지 않아도 됩니다. 초안은 나만 봅니다.</p>
+    </div>
   );
 }

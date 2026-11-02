@@ -1,5 +1,5 @@
 import { requireMembership } from "./access.ts";
-import { audit, getPool } from "./db.ts";
+import { audit, getPool, withTx } from "./db.ts";
 import { notFound } from "./errors.ts";
 import { optionalText, text } from "./validate.ts";
 
@@ -40,4 +40,26 @@ export async function getTask(userId: string, taskId: string) {
   if (!r.rowCount) throw notFound();
   await requireMembership(db, userId, r.rows[0].team_id);
   return r.rows[0];
+}
+
+/** 작업 수정: 버전을 올린다. 생성 중이던 조언은 확정 단계에서 버전이 다르면 무효화된다. */
+export async function updateTask(userId: string, taskId: string, input: TaskInput) {
+  return withTx(async (tx) => {
+    const r = await tx.query("select team_id from tasks where id = $1 for update", [taskId]);
+    if (!r.rowCount) throw notFound();
+    await requireMembership(tx, userId, r.rows[0].team_id);
+    const u = await tx.query(
+      `update tasks set title = $2, purpose = $3, audience = $4, constraints = $5, version = version + 1
+       where id = $1 returning id, title, purpose, audience, constraints, version`,
+      [
+        taskId,
+        text(input.title, "작업 제목", { min: 1, max: 200 }),
+        optionalText(input.purpose, "목적", 1000),
+        optionalText(input.audience, "대상", 500),
+        optionalText(input.constraints, "제약", 1000),
+      ],
+    );
+    await audit(tx, userId, "task.update", taskId);
+    return u.rows[0];
+  });
 }

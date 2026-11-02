@@ -25,3 +25,14 @@ export function bool(value: unknown, field: string, fallback: boolean): boolean 
   if (typeof value !== "boolean") throw badRequest(`${field}는 true/false 여야 합니다.`);
   return value;
 }
+
+/** 제어 문자와 글자 방향을 뒤집는 문자를 지운다 (줄바꿈은 유지). 모델 출력·외부 입력 표시용. */
+export function cleanText(s: string): string {
+  return s.replace(/[\u0000-\u0009\u000B-\u001F\u007F\u202A-\u202E\u2066-\u2069]/g, "").trim();
+}
+
+/** 글자 단위로 자른다 (한글·이모지가 깨지지 않게). */
+export function clip(s: string, n: number): string {
+  const chars = Array.from(s);
+  return chars.length <= n ? s : chars.slice(0, n).join("");
+}

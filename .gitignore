@@ -20,3 +20,6 @@ coverage/
 private/
 next-env.d.ts
 *.tsbuildinfo
+
+# next dev 가 자동 생성하는 AI 에이전트 안내 파일
+AGENTS.md

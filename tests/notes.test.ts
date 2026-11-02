@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { requestAdvice } from "../src/lib/advice.ts";
+import { noAiProvider } from "../src/lib/ai/providers.ts";
 import { getPool } from "../src/lib/db.ts";
 import {
   confirmVersion, createNote, deleteNote, editNote, getNote, listNotes, setRestatement, shareNote, withdrawNote,
@@ -85,15 +87,12 @@ describe("수정·철회·삭제 반영", () => {
   }
 
   async function fakeAdvice(userId: string, teamId: string, versionId: string) {
-    // 조언 생성 기능은 다음 단계. 여기서는 "이 버전을 근거로 쓴 조언"이 있다고 가정하고 행을 직접 만든다.
-    const task = await createTask(userId, teamId, { title: "발표 구성" });
-    const db = getPool();
-    const r = await db.query(
-      "insert into advice_requests (team_id, task_id, requester_id, task_version, context, status) values ($1,$2,$3,1,'ctx','ok') returning id",
-      [teamId, task.id, userId],
-    );
-    await db.query("insert into advice_items (request_id, section, body, evidence_version_ids) values ($1, 'direct', 'b', $2)", [r.rows[0].id, [versionId]]);
-    return r.rows[0].id as string;
+    // AI 미연결(키워드) 모드로 실제 조언 파이프라인을 돌려, 이 버전을 근거로 쓴 조언을 만든다
+    const task = await createTask(userId, teamId, { title: "측정 조건 발표" });
+    const advice = await requestAdvice(userId, task.id, {}, noAiProvider);
+    expect(advice.status).toBe("ok");
+    expect(advice.items.flatMap((i) => i.evidence.map((e) => e.versionId))).toContain(versionId);
+    return advice.id;
   }
   const status = async (id: string) => (await getPool().query("select status from advice_requests where id = $1", [id])).rows[0]?.status;
 
@@ -140,6 +139,13 @@ describe("수정·철회·삭제 반영", () => {
     const left = await getPool().query("select count(*)::int as c from note_versions where note_id = $1", [noteId]);
     expect(left.rows[0].c).toBe(0);
     expect(await status(adviceId)).toBe("invalidated");
+    const items = await getPool().query("select body, quotes::text as q, purged from advice_items where request_id = $1", [adviceId]);
+    expect(items.rowCount).toBeGreaterThan(0);
+    for (const it of items.rows) {
+      expect(it.purged).toBe(true);
+      expect(it.body).toBe("");
+      expect(it.q).not.toContain("측정");
+    }
   });
 
   it("감사 로그에 메모 본문이 들어가지 않는다", async () => {

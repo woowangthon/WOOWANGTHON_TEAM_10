@@ -29,3 +29,28 @@ button:disabled { opacity: .5; cursor: default; }
 pre.raw { white-space: pre-wrap; margin: 6px 0; font: inherit; }
 label.check { display: flex; gap: 6px; align-items: center; } label.check input { width: auto; }
 a { color: var(--accent); }
+
+/* 2단계: AI 연결 지점 화면 */
+:root { --sec-direct: #2563eb; --sec-link: #ca8a04; --sec-ext: #ea580c; --sec-obj: #dc2626; --sec-extra: #78716c;
+  --banner-bg: #fef3c7; --banner-fg: #78350f; }
+@media (prefers-color-scheme: dark) {
+  :root { --sec-direct: #60a5fa; --sec-link: #facc15; --sec-ext: #fb923c; --sec-obj: #f87171; --sec-extra: #a8a29e;
+    --banner-bg: #422006; --banner-fg: #fde68a; }
+}
+.banner { background: var(--banner-bg); color: var(--banner-fg); border-radius: 10px; padding: 10px 14px; margin: 10px 0; font-size: .92rem; }
+.warn { color: var(--warn); }
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; }
+@media (max-width: 560px) { .compare { grid-template-columns: 1fr; } }
+.compare > div { border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.compare h3 { font-size: .85rem; margin: 0 0 6px; color: var(--muted); font-weight: 600; }
+.compare ul { margin: 4px 0; padding-left: 18px; }
+.section { margin: 18px 0 6px; padding-left: 10px; border-left: 4px solid var(--line); }
+.section h3 { font-size: 1rem; margin: 0; } .section .muted { font-size: .8rem; }
+.sec-direct { border-left-color: var(--sec-direct); } .sec-link_reason { border-left-color: var(--sec-link); }
+.sec-ai_extension { border-left-color: var(--sec-ext); } .sec-objection { border-left-color: var(--sec-obj); }
+.sec-extra { border-left-color: var(--sec-extra); }
+details.ev { margin-top: 6px; font-size: .9rem; } details.ev summary { cursor: pointer; color: var(--accent); }
+details.ev blockquote { margin: 6px 0; padding: 6px 10px; border-left: 3px solid var(--line); white-space: pre-wrap; }
+mark { background: var(--banner-bg); color: var(--banner-fg); padding: 0 2px; border-radius: 3px; }
+button.on { outline: 2px solid var(--accent); }
+.small { font-size: .85rem; padding: 5px 10px; }

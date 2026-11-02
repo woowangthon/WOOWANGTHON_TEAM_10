@@ -28,3 +28,18 @@ export const restated = (summary: string) => ({
   uncertainties: ["측정 조건 미확인"],
   clarifying_question: null,
 });
+
+import type { AdviseInput, AiProvider, JudgeInput, RestateInput } from "../src/lib/ai/types.ts";
+
+/** 제공자에 들어간 입력을 기록한다 (모델에 무엇이 전달되는지 검사용). */
+export function recording(p: AiProvider) {
+  const calls = { restate: [] as RestateInput[], judge: [] as JudgeInput[], advise: [] as AdviseInput[] };
+  const provider: AiProvider = {
+    name: p.name,
+    isAi: p.isAi,
+    restate: (i) => (calls.restate.push(i), p.restate(i)),
+    judge: (i) => (calls.judge.push(i), p.judge(i)),
+    advise: (i) => (calls.advise.push(i), p.advise(i)),
+  };
+  return { provider, calls };
+}
