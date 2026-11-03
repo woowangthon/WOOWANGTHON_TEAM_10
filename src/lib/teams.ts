@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { requireMembership } from "./access.ts";
 import { audit, getPool, withTx } from "./db.ts";
 import { notFound } from "./errors.ts";
 import { text } from "./validate.ts";
@@ -23,7 +24,7 @@ export async function joinTeam(userId: string, codeInput: unknown) {
     const team = t.rows[0];
     await tx.query(
       `insert into memberships (team_id, user_id) values ($1, $2)
-       on conflict (team_id, user_id) do update set status = 'active'`,
+       on conflict (team_id, user_id) do update set status = 'active', joined_at = now()`,
       [team.id, userId],
     );
     await audit(tx, userId, "team.join", team.id);
@@ -31,24 +32,73 @@ export async function joinTeam(userId: string, codeInput: unknown) {
   });
 }
 
+/**
+ * 팀 나가기. 유일한 팀장이 나가면 가장 오래된 팀원에게 팀장을 넘긴다 (팀이 팀장 없이 남지 않게).
+ * 나간 뒤에는 팀 자료를 볼 수 없지만, 이미 공유한 메모는 팀에 남는다 (원안 §8.1: 사전 합의 사항).
+ */
 export async function leaveTeam(userId: string, teamId: string) {
-  await withTx(async (tx) => {
-    const r = await tx.query(
-      "update memberships set status = 'left' where team_id = $1 and user_id = $2 and status = 'active'",
+  return withTx(async (tx) => {
+    // 같은 팀의 동시 탈퇴가 꼬이지 않게 팀 행을 잠근다
+    const t = await tx.query("select id from teams where id = $1 for update", [teamId]);
+    if (!t.rowCount) throw notFound();
+    const me = await tx.query(
+      "select role from memberships where team_id = $1 and user_id = $2 and status = 'active'",
       [teamId, userId],
     );
-    if (!r.rowCount) throw notFound();
-    await audit(tx, userId, "team.leave", teamId);
+    if (!me.rowCount) throw notFound();
+    await tx.query("update memberships set status = 'left' where team_id = $1 and user_id = $2", [teamId, userId]);
+
+    let promoted: { userId: string; displayName: string } | null = null;
+    if (me.rows[0].role === "lead") {
+      const leads = await tx.query(
+        "select 1 from memberships where team_id = $1 and status = 'active' and role = 'lead' limit 1",
+        [teamId],
+      );
+      if (!leads.rowCount) {
+        const next = await tx.query(
+          `update memberships m set role = 'lead'
+           from (select user_id from memberships where team_id = $1 and status = 'active'
+                 order by joined_at asc, user_id asc limit 1) pick
+           where m.team_id = $1 and m.user_id = pick.user_id
+           returning m.user_id, (select display_name from users where id = m.user_id) as display_name`,
+          [teamId],
+        );
+        if (next.rowCount) promoted = { userId: next.rows[0].user_id, displayName: next.rows[0].display_name };
+      }
+    }
+    await audit(tx, userId, "team.leave", teamId, { promoted: promoted?.userId ?? null });
+    return { left: true, promoted: promoted ? { displayName: promoted.displayName } : null };
   });
 }
 
 export async function listMyTeams(userId: string) {
   const r = await getPool().query(
-    `select t.id, t.name, m.role from teams t join memberships m on m.team_id = t.id
+    `select t.id, t.name, m.role,
+            (select count(*) from memberships x where x.team_id = t.id and x.status = 'active')::int as member_count
+     from teams t join memberships m on m.team_id = t.id
      where m.user_id = $1 and m.status = 'active' order by t.created_at`,
     [userId],
   );
-  return r.rows as { id: string; name: string; role: string }[];
+  return r.rows as { id: string; name: string; role: string; member_count: number }[];
+}
+
+/** 팀 이름·내 역할·팀원 목록 (이메일은 포함하지 않는다). */
+export async function getTeam(userId: string, teamId: string) {
+  const db = getPool();
+  const me = await requireMembership(db, userId, teamId);
+  const t = await db.query("select name from teams where id = $1", [teamId]);
+  if (!t.rowCount) throw notFound();
+  const members = await db.query(
+    `select u.id, u.display_name, m.role from memberships m join users u on u.id = m.user_id
+     where m.team_id = $1 and m.status = 'active' order by m.joined_at asc, u.display_name asc`,
+    [teamId],
+  );
+  return {
+    id: teamId,
+    name: t.rows[0].name as string,
+    myRole: me.role,
+    members: members.rows.map((m) => ({ id: m.id as string, displayName: m.display_name as string, role: m.role as string, isMe: m.id === userId })),
+  };
 }
 
 // 초대 코드는 팀장에게만 보여준다
@@ -60,4 +110,16 @@ export async function getInviteCode(userId: string, teamId: string) {
   );
   if (!r.rowCount) throw notFound();
   return r.rows[0].invite_code as string;
+}
+
+/** 초대 코드 재발급 (팀장만). 코드가 새어 나갔을 때 쓴다. */
+export async function rotateInviteCode(userId: string, teamId: string) {
+  const code = randomBytes(9).toString("base64url");
+  return withTx(async (tx) => {
+    const m = await requireMembership(tx, userId, teamId);
+    if (m.role !== "lead") throw notFound();
+    await tx.query("update teams set invite_code = $2 where id = $1", [teamId, code]);
+    await audit(tx, userId, "team.rotate_invite", teamId);
+    return { inviteCode: code };
+  });
 }

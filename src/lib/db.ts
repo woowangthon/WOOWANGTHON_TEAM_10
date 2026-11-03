@@ -6,7 +6,16 @@ export function getPool(): pg.Pool {
   if (!pool) {
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) throw new Error("DATABASE_URL is not set");
-    pool = new pg.Pool({ connectionString, max: 5 });
+    pool = new pg.Pool({
+      connectionString,
+      max: 5,
+      // 멈춘 질의가 연결을 영원히 붙들지 않게 한다 (밀리초)
+      statement_timeout: 15_000,
+      connectionTimeoutMillis: 10_000,
+      idleTimeoutMillis: 30_000,
+    });
+    // 놀고 있는 연결이 끊겨도 프로세스가 죽지 않게 한다
+    pool.on("error", (err) => console.error("pg pool error", err.name));
   }
   return pool;
 }
@@ -21,7 +30,11 @@ export async function withTx<T>(fn: (client: pg.PoolClient) => Promise<T>): Prom
     await client.query("commit");
     return result;
   } catch (err) {
-    await client.query("rollback");
+    try {
+      await client.query("rollback");
+    } catch {
+      // 연결 자체가 끊긴 경우: 원래 오류를 그대로 전달한다
+    }
     throw err;
   } finally {
     client.release();

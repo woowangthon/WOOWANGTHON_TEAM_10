@@ -8,7 +8,7 @@ type Evidence =
   | { versionId: string; available: false }
   | { versionId: string; available: true; noteId: string; authorName: string; text: string; summary: string | null; quote: string | null };
 type Item = {
-  id: string; section: string; body: string | null; hidden: boolean; evidence: Evidence[];
+  id: string; section: string; body: string | null; hidden: boolean; keywordOnly: boolean; evidence: Evidence[];
   myReaction: { reaction: "apply" | "hold" | "exclude"; reason: string | null } | null; declinedEarlier: boolean;
 };
 type Advice = {
@@ -67,6 +67,14 @@ export default function TaskPage({ params }: { params: Promise<{ teamId: string;
     })();
   }, [taskId]);
 
+  // 서버가 아직 처리 중이면(같은 버튼을 두 번 누른 경우 등) 끝날 때까지 2초마다 다시 읽는다
+  useEffect(() => {
+    if (advice?.status !== "pending") return;
+    const id = advice.id;
+    const timer = setInterval(() => open(id).catch(() => clearInterval(timer)), 2000);
+    return () => clearInterval(timer);
+  }, [advice?.id, advice?.status]);
+
   const ask = async () => {
     setBusy(true); setError("");
     try {
@@ -97,10 +105,11 @@ export default function TaskPage({ params }: { params: Promise<{ teamId: string;
       <p><a href={`/teams/${teamId}`}>← 팀 공간</a></p>
       {form ? (
         <div className="card">
-          {(["title", "purpose", "audience", "constraints"] as const).map((k) => (
-            <p key={k}><input placeholder={{ title: "작업 제목", purpose: "목적", audience: "대상", constraints: "제약" }[k]}
-              value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} /></p>
-          ))}
+          {(["title", "purpose", "audience", "constraints"] as const).map((k) => {
+            const label = { title: "작업 제목", purpose: "목적", audience: "대상", constraints: "제약" }[k];
+            return <p key={k}><input aria-label={label} placeholder={label} value={form[k]} maxLength={k === "title" ? 200 : 1000}
+              onChange={(e) => setForm({ ...form, [k]: e.target.value })} /></p>;
+          })}
           <div className="row"><button className="primary" onClick={saveTask}>저장</button><button onClick={() => setForm(null)}>취소</button></div>
         </div>
       ) : (
@@ -122,13 +131,13 @@ export default function TaskPage({ params }: { params: Promise<{ teamId: string;
       )}
 
       <div className="card">
-        <textarea placeholder="(선택) 지금 고민하는 것. 예: 3장 슬라이드를 어떻게 구성할까?" value={question} maxLength={1000}
+        <textarea aria-label="질문" placeholder="(선택) 지금 고민하는 것. 예: 3장 슬라이드를 어떻게 구성할까?" value={question} maxLength={1000}
           onChange={(e) => setQuestion(e.target.value)} />
         <div className="row" style={{ marginTop: 8 }}>
           <button className="primary" disabled={busy} onClick={ask}>{busy ? "찾는 중…" : "팀 기억에서 조언 받기"}</button>
         </div>
       </div>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
 
       {advice && <AdviceView advice={advice} keywordMode={keywordMode} onReact={react} />}
 
@@ -152,7 +161,7 @@ export default function TaskPage({ params }: { params: Promise<{ teamId: string;
 function AdviceView({ advice, keywordMode, onReact }: {
   advice: Advice; keywordMode: boolean; onReact: (id: string, r: "apply" | "hold" | "exclude", reason: string) => void;
 }) {
-  if (advice.status === "pending") return <p className="muted">처리 중…</p>;
+  if (advice.status === "pending") return <p className="muted">처리 중… (자동으로 다시 확인합니다)</p>;
   if (advice.status === "failed") return <p className="error">{ERROR_TEXT[advice.error ?? "internal"] ?? ERROR_TEXT.internal}</p>;
   return (
     <div>
@@ -198,6 +207,7 @@ function ItemCard({ item, onReact }: { item: Item; onReact: (id: string, r: "app
   if (item.hidden) return <p className="muted">근거 메모가 철회·수정·삭제되어 이 항목을 숨겼습니다.</p>;
   return (
     <>
+      {item.keywordOnly && <span className="badge">키워드 일치 · AI 미사용</span>}
       <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{item.body}</p>
       {item.evidence.map((e) => e.available && (
         <details key={e.versionId} className="ev">
@@ -211,7 +221,7 @@ function ItemCard({ item, onReact }: { item: Item; onReact: (id: string, r: "app
           <button key={r} className={`small ${item.myReaction?.reaction === r ? "on" : ""}`} onClick={() => onReact(item.id, r, reason)}>
             {REACTION_TEXT[r]}</button>
         ))}
-        <input style={{ flex: 1, minWidth: 140 }} className="small" placeholder="이유 (선택)" value={reason} maxLength={300}
+        <input style={{ flex: 1, minWidth: 140 }} className="small" aria-label="반응 이유" placeholder="이유 (선택)" value={reason} maxLength={300}
           onChange={(e) => setReason(e.target.value)} />
       </div>
     </>

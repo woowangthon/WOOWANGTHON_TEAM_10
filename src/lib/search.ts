@@ -13,6 +13,7 @@ export type Candidate = {
   summary: string | null;
   conditions: string[];
   kind: string | null;
+  allowExternalAi: boolean;
   score: number;
 };
 
@@ -30,7 +31,8 @@ export async function findCandidates(teamId: string, query: string, opts: Search
   const limit = Math.min(Math.max(opts.limit ?? 15, 1), 50);
   const r = await getPool().query(
     `with eligible as (
-       select v.id as version_id, n.id as note_id, v.raw_text, v.restated, v.kind, v.search_text, n.updated_at
+       select v.id as version_id, n.id as note_id, v.raw_text, v.restated, v.kind, v.search_text, n.updated_at,
+              n.allow_external_ai
        from notes n
        join note_versions v on v.id = n.current_version_id and v.team_id = n.team_id
        where n.team_id = $1
@@ -57,6 +59,7 @@ export async function findCandidates(teamId: string, query: string, opts: Search
     summary: row.restated?.summary ?? null,
     conditions: row.restated?.conditions ?? [],
     kind: row.kind,
+    allowExternalAi: row.allow_external_ai,
     score: tokens.length ? row.hits / tokens.length : 0,
   }));
 }

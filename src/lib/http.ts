@@ -49,17 +49,39 @@ export function route<P = Record<string, never>>(handler: Handler<P>) {
       if (err instanceof AppError) {
         return NextResponse.json({ error: err.code, message: err.message }, { status: err.status });
       }
-      // 본문·SQL 은 로그에 남기지 않고 종류만 남긴다
-      console.error("unhandled", req.method, new URL(req.url).pathname, (err as Error)?.name);
+      // 본문·SQL 은 로그에 남기지 않고 종류만 남긴다 (개발 중에는 메시지도 함께)
+      const detail = process.env.NODE_ENV === "production" ? (err as Error)?.name : String((err as Error)?.message ?? err);
+      console.error("unhandled", req.method, new URL(req.url).pathname, detail);
       return NextResponse.json({ error: "internal", message: "일시적인 오류가 발생했습니다." }, { status: 500 });
     }
   };
 }
 
-// 아주 단순한 로그인 시도 제한 (서버 프로세스 메모리 기준, 15분에 10회)
+/** 프록시(Vercel 등) 뒤에서 실제 접속 IP 를 구한다. 헤더는 위조될 수 있으므로 IP 제한은 보조 수단으로만 쓴다. */
+export function clientIp(req: Request): string {
+  const xff = req.headers.get("x-forwarded-for");
+  const first = xff?.split(",")[0]?.trim();
+  return first && first.length <= 64 ? first : "local";
+}
+
+// 단순한 요청 횟수 제한 (서버 프로세스 메모리 기준). 서버가 재시작되면 초기화된다.
+// 만료된 항목은 주기적으로 지워 메모리가 계속 늘지 않게 한다.
 const attempts = new Map<string, { count: number; resetAt: number }>();
-export function rateLimit(key: string, max = 10, windowMs = 15 * 60 * 1000) {
-  const now = Date.now();
+const MAX_TRACKED_KEYS = 10_000;
+let lastSweep = 0;
+
+function sweep(now: number) {
+  if (now - lastSweep < 60_000 && attempts.size < MAX_TRACKED_KEYS) return;
+  lastSweep = now;
+  for (const [k, v] of attempts) if (v.resetAt < now) attempts.delete(k);
+  // 비정상적으로 많은 키가 살아 있으면(대량 요청) 오래된 것부터 버린다
+  if (attempts.size >= MAX_TRACKED_KEYS) {
+    for (const k of [...attempts.keys()].slice(0, attempts.size - MAX_TRACKED_KEYS / 2)) attempts.delete(k);
+  }
+}
+
+export function rateLimit(key: string, max = 10, windowMs = 15 * 60 * 1000, now = Date.now()) {
+  sweep(now);
   const a = attempts.get(key);
   if (!a || a.resetAt < now) {
     attempts.set(key, { count: 1, resetAt: now + windowMs });
@@ -67,4 +89,14 @@ export function rateLimit(key: string, max = 10, windowMs = 15 * 60 * 1000) {
   }
   a.count += 1;
   if (a.count > max) throw new AppError(429, "rate_limited", "시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.");
+}
+
+/** 테스트용 */
+export function resetRateLimits() {
+  attempts.clear();
+  lastSweep = 0;
+}
+
+export function trackedRateLimitKeys() {
+  return attempts.size;
 }

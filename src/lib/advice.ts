@@ -78,12 +78,16 @@ type PipelineResult = {
   inputIds: string[];
 };
 
+/** AI 를 거치지 않은 항목의 표식. 화면에서 "키워드 일치 · AI 미사용" 으로 구분한다. */
+export const KEYWORD_ACTION = "keyword-match";
+const squash = (s: string) => s.replace(/\s+/g, " ").trim();
+
 function keywordItems(cands: Candidate[]): ValidItem[] {
   return cands.map((c) => ({
     section: "direct",
-    body: c.summary ?? clip(c.rawText, 300),
-    evidence: [{ versionId: c.versionId, quote: clip(c.rawText, 120) }],
-    action: "keyword-match",
+    body: c.summary ?? clip(squash(c.rawText), 300),
+    evidence: [{ versionId: c.versionId, quote: clip(squash(c.rawText), 120) }],
+    action: KEYWORD_ACTION,
   }));
 }
 
@@ -129,21 +133,34 @@ async function runPipeline(
   requestId: string,
   provider: AiProvider,
 ): Promise<PipelineResult> {
-  const found = await findCandidates(task.team_id!, contextQuery(ctx), {
-    requireExternalAi: provider.isAi,
-    limit: MAX_CANDIDATES,
-    includeAllIfAtMost: provider.isAi ? SMALL_TEAM_ALL : 0,
-  });
-  if (!found.length) return { items: [], dropped: 0, emptyReason: "no_related_notes", inputIds: [] };
+  const query = contextQuery(ctx);
+  if (!provider.isAi) {
+    const found = await findCandidates(task.team_id!, query, { requireExternalAi: false, limit: MAX_CANDIDATES });
+    if (!found.length) return { items: [], dropped: 0, emptyReason: "no_related_notes", inputIds: [] };
+    const live = await recordInputs(requestId, task.team_id!, found);
+    return { items: keywordItems(live), dropped: 0, emptyReason: live.length ? null : "no_related_notes", inputIds: live.map((c) => c.versionId) };
+  }
 
-  const live = await recordInputs(requestId, task.team_id!, found);
+  // AI 모드: 외부 처리를 허용한 메모만 모델에 보낸다.
+  // 허용하지 않은 메모는 키워드가 겹칠 때만, 모델을 거치지 않고 "팀 메모에 있는 내용" 으로만 보여준다 (원안 §7.1-2).
+  const [forModel, localOnly] = await Promise.all([
+    findCandidates(task.team_id!, query, { requireExternalAi: true, limit: MAX_CANDIDATES, includeAllIfAtMost: SMALL_TEAM_ALL }),
+    findCandidates(task.team_id!, query, { requireExternalAi: false, limit: MAX_CANDIDATES }).then((cs) =>
+      cs.filter((c) => !c.allowExternalAi),
+    ),
+  ]);
+  if (!forModel.length && !localOnly.length) return { items: [], dropped: 0, emptyReason: "no_related_notes", inputIds: [] };
+
+  const live = await recordInputs(requestId, task.team_id!, [...forModel, ...localOnly]);
   const inputIds = live.map((c) => c.versionId);
-  if (!live.length) return { items: [], dropped: 0, emptyReason: "no_related_notes", inputIds };
-
-  if (!provider.isAi) return { items: keywordItems(live), dropped: 0, emptyReason: null, inputIds };
+  const liveModel = live.filter((c) => c.allowExternalAi);
+  const localItems = keywordItems(live.filter((c) => !c.allowExternalAi));
+  if (!liveModel.length) {
+    return { items: localItems, dropped: 0, emptyReason: localItems.length ? null : "no_related_notes", inputIds };
+  }
 
   // 요청 한정 번호: 모델은 실제 ID·작성자를 모른다
-  const byRef = new Map<string, Candidate>(live.map((c, i) => [`N${i + 1}`, c]));
+  const byRef = new Map<string, Candidate>(liveModel.map((c, i) => [`N${i + 1}`, c]));
   const forAi = (ref: string, c: Candidate): CandidateForAi => ({
     ref,
     text: c.rawText,
@@ -155,7 +172,9 @@ async function runPipeline(
     provider.judge({ task: ctx, candidates: [...byRef].map(([ref, c]) => forAi(ref, c)) }),
   );
   const judged = parseJudgments(judgedRaw, new Set(byRef.keys()));
-  if (!judged.relevant.length) return { items: [], dropped: judged.dropped, emptyReason: "no_related_notes", inputIds };
+  if (!judged.relevant.length) {
+    return { items: localItems, dropped: judged.dropped, emptyReason: localItems.length ? null : "no_related_notes", inputIds };
+  }
 
   const relevant = judged.relevant.map((j) => ({ ...forAi(j.ref, byRef.get(j.ref)!), stance: j.stance }));
   const refByVersion = new Map(judged.relevant.map((j) => [byRef.get(j.ref)!.versionId, j.ref]));
@@ -169,10 +188,11 @@ async function runPipeline(
     }),
   );
   const v = validateAdviceOutput(adviseRaw, sources);
+  const items = [...v.items, ...localItems];
   return {
-    items: v.items,
+    items,
     dropped: judged.dropped + v.dropped,
-    emptyReason: v.items.length ? null : "no_valid_items",
+    emptyReason: items.length ? null : "no_valid_items",
     inputIds,
   };
 }
@@ -303,9 +323,19 @@ type EvidenceView =
       quote: string | null;
     };
 
+/** 너무 오래 '처리 중' 인 요청(서버가 중간에 멈춘 경우)을 실패로 정리한다. */
+async function markStale(db: Db, where: string, params: unknown[]) {
+  await db.query(
+    `update advice_requests set status = 'failed', error = 'stale', finished_at = now()
+     where status = 'pending' and created_at < now() - ($${params.length + 1} || ' milliseconds')::interval and ${where}`,
+    [...params, String(STALE_MS)],
+  );
+}
+
 /** 조언 보기. 다시 열 때마다 근거 메모의 현재 상태를 확인해, 철회·수정·삭제된 근거에 기댄 항목은 숨긴다. */
 export async function getAdvice(userId: string, requestId: string) {
   const db = getPool();
+  await markStale(db, "id = $1", [requestId]);
   const r = await db.query(
     `select r.*, t.version as current_task_version
      from advice_requests r join tasks t on t.id = r.task_id where r.id = $1`,
@@ -316,9 +346,8 @@ export async function getAdvice(userId: string, requestId: string) {
   await requireMembership(db, userId, req.team_id);
   if (req.requester_id !== userId) throw notFound(); // 조언은 요청한 사람에게만 보인다
 
-  const stale = req.status === "pending" && Date.now() - new Date(req.created_at).getTime() > STALE_MS;
-  const status: string = stale ? "failed" : req.status;
-  const error: string | null = stale ? "stale" : req.error;
+  const status: string = req.status;
+  const error: string | null = req.error;
 
   const itemsR = await db.query("select * from advice_items where request_id = $1 order by position", [requestId]);
   const ids = [...new Set(itemsR.rows.flatMap((i) => i.evidence_version_ids as string[]))];
@@ -360,6 +389,8 @@ export async function getAdvice(userId: string, requestId: string) {
       section: i.section as string,
       body: hidden ? null : (i.body as string),
       hidden,
+      /** AI 를 거치지 않고 키워드 일치만으로 찾은 메모 */
+      keywordOnly: i.action === KEYWORD_ACTION,
       evidence: hidden ? evidence.map((e) => ({ versionId: e.versionId, available: false as const })) : evidence,
       myReaction: mine ? { reaction: mine.reaction as Reaction, reason: (mine.reason as string | null) ?? null } : null,
       /** 이 요청 전에 이미 보류·제외한 제안 → 화면에서 접어서 보여준다 */
@@ -391,6 +422,7 @@ export async function listAdviceRequests(userId: string, taskId: string) {
   const t = await db.query("select team_id from tasks where id = $1", [taskId]);
   if (!t.rowCount) throw notFound();
   await requireMembership(db, userId, t.rows[0].team_id);
+  await markStale(db, "task_id = $1 and requester_id = $2", [taskId, userId]);
   const r = await db.query(
     `select r.id, r.status, r.provider, r.created_at, r.error,
             (select count(*) from advice_items i where i.request_id = r.id)::int as item_count

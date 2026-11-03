@@ -1,11 +1,13 @@
 import { afterAll, beforeEach } from "vitest";
 import { closePool, getPool } from "../src/lib/db.ts";
 import { signUp } from "../src/lib/auth.ts";
+import { assertTestDatabase } from "./db-guard.ts";
 
 process.env.DATABASE_URL ??= "postgres://mijuk:devpass@localhost/mijuk_test";
 process.env.SESSION_SECRET ??= "test-secret-test-secret-test-secret-123";
 
 export function useCleanDb() {
+  assertTestDatabase(process.env.DATABASE_URL);
   beforeEach(async () => {
     await getPool().query(
       "truncate audit_log, reactions, advice_items, advice_requests, note_versions, notes, tasks, memberships, teams, users cascade",

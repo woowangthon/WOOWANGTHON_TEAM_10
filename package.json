@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "engines": {
-    "node": ">=20.9.0"
+    "node": ">=22.6.0"
   },
   "scripts": {
     "dev": "next dev",
@@ -12,7 +12,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:migrate": "node --experimental-strip-types scripts/migrate.ts"
+    "db:migrate": "node --experimental-strip-types scripts/migrate.ts",
+    "check": "npm run typecheck && npm test"
   },
   "dependencies": {
     "next": "16.4.2",
