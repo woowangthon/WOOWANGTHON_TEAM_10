@@ -17,6 +17,7 @@ describe("AI 제공자 선택", () => {
   });
   it("모르는 제공자 이름은 거부한다", () => {
     expect(() => getProvider({ AI_PROVIDER: "gpt" })).toThrow();
+    expect(() => getProvider({ AI_PROVIDER: "claude" })).toThrow();
   });
 });
 

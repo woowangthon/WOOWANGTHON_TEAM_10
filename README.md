@@ -10,7 +10,7 @@
 
 ## 현재 상태 (2026-11-03)
 
-**AI 없이 전체 흐름이 끝까지 동작한다.** 실제 AI(Claude)는 아직 연결하지 않았다 (`AI_PROVIDER=none`).
+**전체 흐름이 끝까지 동작하고, OpenAI(GPT-6.1 Terra)를 연결해 실제 모델로 평가를 돌렸다** (`AI_PROVIDER=openai`). AI 없이도 동작한다 (`AI_PROVIDER=none`).
 
 - 가입/로그인(비밀번호는 scrypt 해시, 서명된 세션 쿠키, 시도 횟수 제한)
 - 팀 만들기 · 초대 코드로 가입 · 코드 재발급 · 나가기(유일한 팀장이 나가면 자동 승계)
@@ -27,9 +27,19 @@
 | --- | --- |
 | `none` (기본) | AI를 부르지 않음. 메모는 원문 그대로 등록, 조언은 **키워드가 겹치는 팀 메모만** "키워드 일치 · AI 미사용" 표시로 보여줌 |
 | `fake` | 개발용 가짜 응답. 모든 출력에 【개발용 가짜 응답】 표시. **운영 환경(`NODE_ENV=production`, Vercel)에서는 서버가 시작을 거부** |
-| `claude` | 다음 단계 (API 키 필요). `src/lib/ai/types.ts` 의 `AiProvider` 인터페이스를 구현하면 된다 |
+| `openai` | OpenAI Responses API. 기본 모델 `gpt-6.1-terra`, 추론 강도 `OPENAI_REASONING_EFFORT`(기본 `none`). 키는 `OPENAI_API_KEY` |
 
-모델 출력은 `src/lib/ai/validate-output.ts` 에서 검증한다. 건네지 않은 근거 번호, 원문에 없는 인용, 구획 규칙 위반은 버린다.
+모델 출력은 JSON 스키마로 고정하고(`src/lib/ai/prompts.ts`), 그래도 `src/lib/ai/validate-output.ts` 에서 다시 검증한다. 건네지 않은 근거 번호, 원문에 없는 인용, 구획 규칙 위반은 버린다. 대화는 OpenAI 쪽에 저장하지 않는다(`store: false`). 다른 모델을 붙이려면 `src/lib/ai/types.ts` 의 `AiProvider` 인터페이스를 구현한다.
+
+> **프록시 뒤에서 개발할 때**: Node.js 의 `fetch` 는 `HTTPS_PROXY` 환경변수를 기본으로 따르지 않는다. Claude 클라우드 세션처럼 프록시를 거치는 환경에서는 `NODE_USE_ENV_PROXY=1` 을 붙여 실행한다 (`NODE_USE_ENV_PROXY=1 npm run dev`). 본인 PC·Vercel 에서는 필요 없다.
+
+### 평가 (실제 모델로 A/B/C 비교)
+
+```bash
+DATABASE_URL=postgres://mijuk:devpass@localhost/mijuk_eval AI_PROVIDER=openai npm run eval
+```
+
+가상 메모 40개·질문 10개로 세 조건을 비교하고 `eval/results/<실행ID>/report.md` 에 지표와 사람 점검표를 남긴다. 자세한 설명은 [`eval/README.md`](eval/README.md).
 
 ## 로컬 실행
 
@@ -77,7 +87,8 @@ GitHub 에 푸시하면 `.github/workflows/ci.yml` 이 타입 검사·테스트�
 4. Vercel 프로젝트 Settings → Environment Variables 에 다음을 넣는다.
    - `DATABASE_URL` = 1번 주소
    - `SESSION_SECRET` = `openssl rand -base64 36` 으로 만든 값
-   - `AI_PROVIDER` = `none` (AI 를 연결하기 전까지)
+   - `AI_PROVIDER` = `openai`, `OPENAI_API_KEY` = OpenAI 프로젝트 키 (월 예산 한도를 건 것), `OPENAI_REASONING_EFFORT` = `none`
+     (AI 없이 운영하려면 `AI_PROVIDER` = `none`)
 5. Deploy 한 뒤 `https://<프로젝트>.vercel.app/api/health` 가 `{"ok":true,"db":"ok"}` 를 돌려주는지 확인한다.
 6. **팀 외부 사람**(심사위원 등)이 접속·가입할 수 있는지 다른 기기·네트워크에서 확인한다.
 

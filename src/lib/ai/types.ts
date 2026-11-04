@@ -36,11 +36,23 @@ export type AdviseInput = {
  *  advise  → { items: [{ section, body, evidence: [{ ref, quote? }], action? }] }
  *            section: direct | link_reason | ai_extension | objection | extra
  */
+export type AiUsage = {
+  model: string;
+  call: "restate" | "judge" | "advise" | "eval";
+  inputTokens: number;
+  cachedTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  ms: number;
+};
+
 export interface AiProvider {
-  readonly name: "none" | "fake" | "claude";
+  readonly name: "none" | "fake" | "openai";
   /** true 일 때만 출력이 모델 생성물이다. false 면 AI 를 호출하지 않는다. */
   readonly isAi: boolean;
   restate(input: RestateInput): Promise<unknown>;
   judge(input: JudgeInput): Promise<unknown>;
   advise(input: AdviseInput): Promise<unknown>;
+  /** 마지막으로 가져간 이후의 사용량(토큰·시간). 비용 기록용. 없으면 빈 배열. */
+  drainUsage?(): AiUsage[];
 }

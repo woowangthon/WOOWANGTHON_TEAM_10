@@ -4,6 +4,7 @@
 // AI 미연결(provider.isAi=false)일 때는 모델을 부르지 않고, 키워드가 겹치는 공유 메모를
 // "팀 메모에 있는 내용"으로만 보여준다. 연결 이유·활용 제안·반론은 만들지 않는다 (지어내지 않음).
 import { requireMembership } from "./access.ts";
+import { PROMPT_VERSION } from "./ai/prompts.ts";
 import { AiTimeout, aiTimeoutMs, withTimeout } from "./ai/timeout.ts";
 import type { AiProvider, CandidateForAi, DeclinedForAi, TaskContext } from "./ai/types.ts";
 import {
@@ -19,9 +20,10 @@ import { badRequest, conflict, notFound } from "./errors.ts";
 import { findCandidates, type Candidate } from "./search.ts";
 import { clip, optionalText, uuid } from "./validate.ts";
 
+/** 키워드 모드에서 화면에 보여줄 최대 메모 수 */
 const MAX_CANDIDATES = 20;
-/** AI 모드에서 공유 메모가 이 개수 이하인 작은 팀이면, 키워드가 안 겹쳐도 전부 판정 대상으로 */
-const SMALL_TEAM_ALL = 30;
+/** AI 모드에서 판정 단계에 넘길 최대 후보 수. 공유 메모가 이 개수 이하인 팀이면 키워드가 안 겹쳐도 전부 판정 대상으로 */
+const SMALL_TEAM_ALL = 40;
 /** 처리 중 상태가 이보다 오래되면 중단된 것으로 본다 */
 const STALE_MS = 5 * 60 * 1000;
 
@@ -144,7 +146,7 @@ async function runPipeline(
   // AI 모드: 외부 처리를 허용한 메모만 모델에 보낸다.
   // 허용하지 않은 메모는 키워드가 겹칠 때만, 모델을 거치지 않고 "팀 메모에 있는 내용" 으로만 보여준다 (원안 §7.1-2).
   const [forModel, localOnly] = await Promise.all([
-    findCandidates(task.team_id!, query, { requireExternalAi: true, limit: MAX_CANDIDATES, includeAllIfAtMost: SMALL_TEAM_ALL }),
+    findCandidates(task.team_id!, query, { requireExternalAi: true, limit: SMALL_TEAM_ALL, includeAllIfAtMost: SMALL_TEAM_ALL }),
     findCandidates(task.team_id!, query, { requireExternalAi: false, limit: MAX_CANDIDATES }).then((cs) =>
       cs.filter((c) => !c.allowExternalAi),
     ),
@@ -296,19 +298,37 @@ export async function requestAdvice(
   }
   const requestId = ins.rows[0].id as string;
   await audit(db, userId, "advice.request", requestId, { provider: provider.name });
+  provider.drainUsage?.(); // 이전 호출의 사용량이 섞이지 않게 비운다
 
   try {
     const res = await runPipeline(userId, task, ctx, requestId, provider);
     await finalize(requestId, userId, task.team_id, task.id, task.version, res);
   } catch (err) {
     const code = errorCode(err);
-    console.error("advice failed", code, (err as Error)?.name);
+    console.error("advice failed", code, (err as Error)?.name, code === "ai_error" ? String((err as Error)?.message).slice(0, 200) : "");
     await db.query(
       "update advice_requests set status = 'failed', error = $2, finished_at = now() where id = $1 and status = 'pending'",
       [requestId, code],
     );
   }
+  await recordUsage(requestId, provider);
   return getAdvice(userId, requestId);
+}
+
+/** 모델 사용량(토큰·시간)을 요청에 기록한다. 비용 계산과 운영 점검용 (원안 §8.3). */
+async function recordUsage(requestId: string, provider: AiProvider) {
+  const usage = provider.drainUsage?.() ?? [];
+  if (!usage.length) return;
+  const sum = usage.reduce(
+    (a, u) => ({ input: a.input + u.inputTokens, cached: a.cached + u.cachedTokens, output: a.output + u.outputTokens, reasoning: a.reasoning + u.reasoningTokens, ms: a.ms + u.ms }),
+    { input: 0, cached: 0, output: 0, reasoning: 0, ms: 0 },
+  );
+  await getPool().query("update advice_requests set usage = $2, model = $3, prompt_version = $4 where id = $1", [
+    requestId,
+    JSON.stringify({ calls: usage, ...sum }),
+    usage[0]!.model,
+    PROMPT_VERSION,
+  ]);
 }
 
 type EvidenceView =

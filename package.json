@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:migrate": "node --experimental-strip-types scripts/migrate.ts",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "eval": "node --experimental-transform-types eval/run.ts"
   },
   "dependencies": {
     "next": "16.4.2",

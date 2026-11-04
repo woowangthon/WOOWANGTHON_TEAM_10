@@ -6,7 +6,7 @@ import { requireMembership } from "./access.ts";
 import { aiUnavailable } from "./ai/providers.ts";
 import { AiTimeout, aiTimeoutMs, withTimeout } from "./ai/timeout.ts";
 import type { AiProvider } from "./ai/types.ts";
-import { getPool } from "./db.ts";
+import { audit, getPool } from "./db.ts";
 import { AppError, conflict, notFound } from "./errors.ts";
 import { parseRestated, setRestatement, type Restated } from "./notes.ts";
 import { restatementWarnings } from "./restate-check.ts";
@@ -31,13 +31,17 @@ export async function restateNote(userId: string, noteId: string, versionId: str
     throw conflict("최신 미확인 버전만 정리할 수 있습니다.");
 
   let output: unknown;
+  provider.drainUsage?.();
   try {
     output = await withTimeout(provider.restate({ rawText: row.raw_text }), aiTimeoutMs());
   } catch (err) {
     if (err instanceof AiTimeout)
       throw new AppError(504, "ai_timeout", "AI 응답이 늦어 중단했습니다. 원문은 그대로 남아 있습니다.");
-    console.error("restate failed", (err as Error)?.name);
+    console.error("restate failed", (err as Error)?.name, String((err as Error)?.message).slice(0, 200));
     throw new AppError(502, "ai_error", "AI 정리에 실패했습니다. 원문은 그대로 남아 있습니다.");
+  } finally {
+    const usage = provider.drainUsage?.() ?? [];
+    if (usage.length) await audit(db, userId, "note.restate", noteId, { versionId, provider: provider.name, usage });
   }
 
   let restated: Restated;

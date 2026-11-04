@@ -25,12 +25,24 @@ export function checkEnvironment(env: Env): StartupProblem[] {
   }
 
   const provider = (env.AI_PROVIDER ?? "none").trim();
-  if (!["", "none", "fake", "claude"].includes(provider)) {
-    problems.push({ fatal: true, message: `AI_PROVIDER 값 "${provider}" 은 지원하지 않습니다. none | fake | claude 중 하나여야 합니다.` });
+  if (!["", "none", "fake", "openai"].includes(provider)) {
+    problems.push({ fatal: true, message: `AI_PROVIDER 값 "${provider}" 은 지원하지 않습니다. none | fake | openai 중 하나여야 합니다.` });
   } else if (provider === "fake" && (isProd || env.VERCEL)) {
     problems.push({ fatal: true, message: "AI_PROVIDER=fake 는 운영 환경(또는 Vercel)에서 쓸 수 없습니다. none 으로 바꿔 주세요." });
-  } else if (provider === "claude") {
-    problems.push({ fatal: true, message: "AI_PROVIDER=claude 는 아직 구현되지 않았습니다. none 으로 두세요." });
+  } else if (provider === "openai") {
+    if (!env.OPENAI_API_KEY?.trim()) {
+      problems.push({
+        fatal: false,
+        message: "OPENAI_API_KEY 가 환경변수에 없습니다. 프록시가 키를 주입하는 개발 환경이 아니면 AI 호출이 실패합니다.",
+      });
+    }
+    const effort = (env.OPENAI_REASONING_EFFORT ?? "none").trim();
+    if (!["none", "low", "medium", "high", "xhigh", "max"].includes(effort)) {
+      problems.push({ fatal: false, message: `OPENAI_REASONING_EFFORT 값 "${effort}" 은 지원하지 않습니다. none 을 씁니다.` });
+    }
+  }
+  if (provider !== "openai" && env.OPENAI_API_KEY) {
+    problems.push({ fatal: false, message: "OPENAI_API_KEY 가 있지만 AI_PROVIDER 가 openai 가 아니라 쓰이지 않습니다." });
   }
 
   if (env.AI_TIMEOUT_MS !== undefined) {
