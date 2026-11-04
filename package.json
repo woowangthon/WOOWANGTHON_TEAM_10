@@ -14,7 +14,8 @@
     "test": "vitest run",
     "db:migrate": "node --experimental-strip-types scripts/migrate.ts",
     "check": "npm run typecheck && npm test",
-    "eval": "node --experimental-transform-types eval/run.ts"
+    "eval": "node --experimental-transform-types eval/run.ts",
+    "smoke": "node --experimental-strip-types scripts/smoke.ts"
   },
   "dependencies": {
     "next": "16.4.2",
