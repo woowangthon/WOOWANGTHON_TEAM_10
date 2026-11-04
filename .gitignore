@@ -1,0 +1,25 @@
+# 비밀정보: 실제 키가 들어간 파일은 절대 커밋하지 않음
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 의존성·빌드 결과
+node_modules/
+.next/
+out/
+dist/
+coverage/
+.vercel/
+
+# 기타
+.DS_Store
+*.log
+# 원본 자료(킥오프 전사·개인 메모 등)는 저장소에 올리지 않음
+private/
+next-env.d.ts
+*.tsbuildinfo
+
+# next dev 가 자동 생성하는 AI 에이전트 안내 파일
+AGENTS.md

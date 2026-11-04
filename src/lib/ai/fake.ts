@@ -1,0 +1,82 @@
+// 개발·테스트 전용 가짜 제공자. 실제 AI가 아니다.
+//  - 모든 출력에 【개발용 가짜 응답】 표시를 붙인다.
+//  - 운영 환경(NODE_ENV=production, Vercel 배포)에서는 providers.ts 가 켜지지 않게 막는다.
+//  - 테스트에서는 overrides 로 악의적·잘못된 출력을 흉내 내 서버 검증을 시험한다.
+import { keywordTokens } from "../keywords.ts";
+import { clip } from "../validate.ts";
+import type { AdviseInput, AiProvider, JudgeInput, RestateInput } from "./types.ts";
+
+export const FAKE_LABEL = "【개발용 가짜 응답】";
+
+type Overrides = {
+  restate?: (input: RestateInput) => unknown;
+  judge?: (input: JudgeInput) => unknown;
+  advise?: (input: AdviseInput) => unknown;
+};
+
+export class FakeProvider implements AiProvider {
+  readonly name = "fake" as const;
+  readonly isAi = true;
+
+  constructor(private readonly overrides: Overrides = {}) {}
+
+  async restate(input: RestateInput): Promise<unknown> {
+    if (this.overrides.restate) return this.overrides.restate(input);
+    return {
+      summary: `${FAKE_LABEL} ${clip(input.rawText, 80)}`,
+      kind: "guess",
+      conditions: [],
+      uncertainties: [],
+      clarifying_question: null,
+    };
+  }
+
+  async judge(input: JudgeInput): Promise<unknown> {
+    if (this.overrides.judge) return this.overrides.judge(input);
+    const t = input.task;
+    const tokens = keywordTokens([t.title, t.purpose, t.audience, t.constraints, t.question].join(" "));
+    return {
+      judgments: input.candidates.map((c) => ({
+        ref: c.ref,
+        relevant: tokens.some((tok) => c.text.toLowerCase().includes(tok)),
+        stance: "unclear",
+        why: `${FAKE_LABEL} 키워드 일치 여부로만 판단`,
+      })),
+    };
+  }
+
+  async advise(input: AdviseInput): Promise<unknown> {
+    if (this.overrides.advise) return this.overrides.advise(input);
+    const items: unknown[] = [];
+    for (const n of input.notes) {
+      items.push({
+        section: "direct",
+        body: `${FAKE_LABEL} 메모 내용: ${clip(n.text, 60)}`,
+        evidence: [{ ref: n.ref, quote: clip(n.text, 20) }],
+        action: `메모 확인 ${n.ref}`,
+      });
+      items.push({
+        section: "link_reason",
+        body: `${FAKE_LABEL} 작업 "${clip(input.task.title, 30)}"과 키워드가 겹칩니다.`,
+        evidence: [{ ref: n.ref }],
+        action: `연결 이유 ${n.ref}`,
+      });
+    }
+    const first = input.notes[0];
+    if (first) {
+      items.push({
+        section: "objection",
+        body: `${FAKE_LABEL} 확인 필요: 메모의 조건이 지금 작업에도 해당하는지 확인하세요.`,
+        evidence: [{ ref: first.ref }],
+        action: "조건 확인",
+      });
+    }
+    items.push({
+      section: "extra",
+      body: `${FAKE_LABEL} 일반 제안: 발표 끝에 질문 시간을 두세요.`,
+      evidence: [],
+      action: "질문 시간",
+    });
+    return { items };
+  }
+}

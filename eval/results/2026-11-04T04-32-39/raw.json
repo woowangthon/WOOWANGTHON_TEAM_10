@@ -1,0 +1,2527 @@
+{
+  "runId": "2026-11-04T04-32-39",
+  "provider": "openai",
+  "model": "gpt-6.1-terra",
+  "reasoningEffort": "none",
+  "promptVersion": "2026-11-04.1",
+  "price": {
+    "input": 1,
+    "cached": 0.05,
+    "output": 5
+  },
+  "conditions": [
+    "A",
+    "B",
+    "C"
+  ],
+  "restate": true,
+  "summary": {
+    "questions": 10,
+    "A": {
+      "runs": 10,
+      "coreRecallAvg": null,
+      "falseLinksTotal": 0,
+      "forbiddenTotal": 0,
+      "trickyTotal": 0,
+      "inventedTotal": 0,
+      "keywordOnlyTotal": 0,
+      "keywordOnlyFalseTotal": 0,
+      "itemsTotal": 34,
+      "failed": 0,
+      "tokens": {
+        "input": 2023,
+        "cached": 0,
+        "output": 2816,
+        "ms": 41988
+      },
+      "avgMs": 4199,
+      "costUsd": 0.0161
+    },
+    "B": {
+      "runs": 10,
+      "coreRecallAvg": 0.944,
+      "falseLinksTotal": 24,
+      "forbiddenTotal": 0,
+      "trickyTotal": 0,
+      "inventedTotal": 0,
+      "keywordOnlyTotal": 0,
+      "keywordOnlyFalseTotal": 0,
+      "itemsTotal": 36,
+      "failed": 0,
+      "tokens": {
+        "input": 11693,
+        "cached": 0,
+        "output": 5646,
+        "ms": 72874
+      },
+      "avgMs": 7287,
+      "costUsd": 0.0399
+    },
+    "C": {
+      "runs": 10,
+      "coreRecallAvg": 0.917,
+      "falseLinksTotal": 29,
+      "forbiddenTotal": 0,
+      "trickyTotal": 0,
+      "inventedTotal": 0,
+      "keywordOnlyTotal": 7,
+      "keywordOnlyFalseTotal": 5,
+      "itemsTotal": 68,
+      "failed": 0,
+      "tokens": {
+        "input": 43360,
+        "cached": 0,
+        "output": 20855,
+        "ms": 251013
+      },
+      "avgMs": 25101,
+      "costUsd": 0.1476
+    },
+    "restate": {
+      "calls": 38,
+      "tokens": {
+        "input": 15278,
+        "cached": 0,
+        "output": 2344
+      },
+      "costUsd": 0.027,
+      "avgMs": 1907
+    },
+    "totalCostUsd": 0.2306
+  },
+  "restatements": [
+    {
+      "id": "m01",
+      "raw": "두 실험은 측정 조건이 달라 보임(1차 22도, 2차 26도). 숫자만 비교하면 오해할 수도",
+      "summary": "두 실험은 측정 조건이 달라 보이며(1차 22도, 2차 26도), 숫자만 비교하면 오해할 수도 있다.",
+      "kind": "guess",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m02",
+      "raw": "표본이 12개뿐이라 ±15% 정도는 오차일 수 있음. 평균만 보여주면 위험",
+      "summary": "표본이 12개뿐이라 ±15% 정도는 오차일 수 있고, 평균만 보여주면 위험함.",
+      "kind": "objection",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m03",
+      "raw": "2차 실험 LED 거리는 자로 잰 거라 1cm 단위 오차 있음",
+      "summary": "2차 실험 LED 거리는 자로 잰 거라 1cm 단위 오차 있음",
+      "kind": "objection",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m04",
+      "raw": "비전공자한테는 '광합성 효율' 대신 '잎이 자란 정도'로 말하는 게 나을 듯. 전공자면 용어 그대로",
+      "summary": "비전공자한테는 '광합성 효율' 대신 '잎이 자란 정도'로 말하는 게 나을 듯. 전공자면 용어 그대로.",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m05",
+      "raw": "3분 발표면 슬라이드 5장이 한계. 그래프 1장, 결론 1장",
+      "summary": "3분 발표면 슬라이드 5장이 한계. 그래프 1장, 결론 1장",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m06",
+      "raw": "대시보드 데모는 와이파이 끊기면 끝. 녹화 영상도 같이 준비해야 하나",
+      "summary": "대시보드 데모는 와이파이 끊기면 끝인데, 녹화 영상도 같이 준비해야 하나?",
+      "kind": "question",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m07",
+      "raw": "심사 때 데모는 실시간으로 돌리자고 했음. 녹화만 틀면 모킹처럼 보일 수 있음",
+      "summary": "심사 때 데모는 실시간으로 돌리자는 제안. 녹화만 틀면 모킹처럼 보일 수 있음.",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m08",
+      "raw": "축 단위가 실험1은 cm, 실험2는 mm. 한 그림에 합치면 왜곡됨",
+      "summary": "축 단위가 실험1은 cm, 실험2는 mm이므로 한 그림에 합치면 왜곡됨.",
+      "kind": "objection",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m09",
+      "raw": "대조군 물 주는 시간이 하루 달랐음. 결과에 영향 있는지 모르겠음",
+      "summary": "대조군 물 주는 시간이 하루 달랐으며, 결과에 영향이 있는지 모르겠음.",
+      "kind": "question",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m10",
+      "raw": "발표 첫 장에 '왜 이 실험을 했나'가 없으면 비전공자는 못 따라옴",
+      "summary": "발표 첫 장에 '왜 이 실험을 했나'가 없으면 비전공자는 못 따라옴",
+      "kind": "objection",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m11",
+      "raw": "로그인 없이 바로 보이는 데모 페이지가 있어야 심사위원이 편함",
+      "summary": "로그인 없이 바로 보이는 데모 페이지가 있어야 심사위원이 편함",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m12",
+      "raw": "제출 영상은 5분 이내, 배속 쓰면 우측 상단에 표시 필수라고 안내문에 있었음",
+      "summary": "안내문에 제출 영상은 5분 이내이고, 배속을 쓰면 우측 상단에 표시가 필수라고 있었음.",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m13",
+      "raw": "실험 데이터 CSV에 빈 칸 3개 있음. 0으로 채우면 평균이 내려감",
+      "summary": "실험 데이터 CSV에 빈 칸 3개가 있고, 0으로 채우면 평균이 내려감.",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m14",
+      "raw": "질문 시간에 '왜 LED 색을 두 개만 썼냐'고 물어볼 것 같음. 답 준비해야",
+      "summary": "질문 시간에 '왜 LED 색을 두 개만 썼냐'고 물어볼 것 같아 답을 준비해야 함.",
+      "kind": "guess",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m15",
+      "raw": "차트 라이브러리 바꾸면 색이 달라져서 슬라이드 그래프랑 안 맞음",
+      "summary": "차트 라이브러리를 바꾸면 색이 달라져 슬라이드 그래프와 안 맞음.",
+      "kind": "objection",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m16",
+      "raw": "1차 결과만으로 결론 내리면 안 될 듯. 2차랑 같이 봐야 함",
+      "summary": "1차 결과만으로 결론 내리면 안 될 듯. 2차랑 같이 봐야 함",
+      "kind": "guess",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m17",
+      "raw": "발표 자료에 남의 사진 쓰면 출처 적어야 함",
+      "summary": "발표 자료에 남의 사진 쓰면 출처 적어야 함",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m18",
+      "raw": "대시보드 숫자는 소수점 둘째 자리까지만. 더 보여주면 정확해 보이지만 실제 측정은 그 정도가 안 됨",
+      "summary": "대시보드 숫자는 소수점 둘째 자리까지만 보여주자. 더 보여주면 정확해 보이지만 실제 측정은 그 정도가 안 됨.",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m19",
+      "raw": "결론 슬라이드에 '이 실험의 한계' 한 줄 넣자",
+      "summary": "결론 슬라이드에 '이 실험의 한계' 한 줄 넣자",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m20",
+      "raw": "온도는 매일 아침 한 번만 쟀음. 낮 온도는 모름",
+      "summary": "온도는 매일 아침 한 번만 쟀음. 낮 온도는 모름",
+      "kind": "question",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m21",
+      "raw": "API 키를 프론트 코드에 넣으면 안 됨. 서버에서만",
+      "summary": "API 키를 프론트 코드에 넣으면 안 됨. 서버에서만",
+      "kind": "objection",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m22",
+      "raw": "팀 노션에 회의록 안 올리면 노션 특별상은 못 받음",
+      "summary": "팀 노션에 회의록 안 올리면 노션 특별상은 못 받음",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m23",
+      "raw": "빨간 LED 쪽이 더 자란 것처럼 보이지만 그 화분이 창가에 있었음. 햇빛 영향일 수도",
+      "summary": "빨간 LED 쪽이 더 자란 것처럼 보이지만, 그 화분이 창가에 있었음. 햇빛 영향일 수도 있음.",
+      "kind": "guess",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m24",
+      "raw": "글자 24pt 아래는 뒤에서 안 보임",
+      "summary": "글자 24pt 아래는 뒤에서 안 보임",
+      "kind": "objection",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m25",
+      "raw": "데모에 가짜 숫자 넣으면 질문 들어옴. 실제 실험 데이터로",
+      "summary": "데모에 가짜 숫자를 넣으면 질문이 들어오므로 실제 실험 데이터로 하자는 제안.",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m26",
+      "raw": "회의실 예약 목요일 3시로 바꿈",
+      "summary": "회의실 예약을 목요일 3시로 바꿈.",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m27",
+      "raw": "다음 주 간식은 김밥",
+      "summary": "다음 주 간식은 김밥",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m28",
+      "raw": "동아리 회비 3만원 아직 안 낸 사람 2명",
+      "summary": "동아리 회비 3만원 아직 안 낸 사람 2명",
+      "kind": "guess",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m29",
+      "raw": "노트북 충전기 빌려줄 사람?",
+      "summary": "노트북 충전기 빌려줄 사람?",
+      "kind": "question",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m30",
+      "raw": "실험실 열쇠는 금요일까지 반납",
+      "summary": "실험실 열쇠는 금요일까지 반납",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m31",
+      "raw": "발표 순서 추첨은 목요일 오전",
+      "summary": "발표 순서 추첨은 목요일 오전",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m32",
+      "raw": "프린터 토너 떨어짐",
+      "summary": "프린터 토너 떨어짐",
+      "kind": "question",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m33",
+      "raw": "주차권은 1층 데스크에서",
+      "summary": "주차권은 1층 데스크에서",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m34",
+      "raw": "점심은 12시 반",
+      "summary": "점심은 12시 반",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m35",
+      "raw": "화분 하나 깨져서 새로 삼",
+      "summary": "화분 하나가 깨져서 새로 삼.",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m36",
+      "raw": "2차 실험 데이터는 센서 고장이라 못 믿음",
+      "summary": "2차 실험 데이터는 센서 고장이라 못 믿음",
+      "kind": "objection",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m39",
+      "raw": "제출 폼은 대표자가 11월 15일 18시 전에 내야 함",
+      "summary": "제출 폼은 대표자가 11월 15일 18시 전에 내야 함",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    },
+    {
+      "id": "m40",
+      "raw": "실험 노트는 손글씨라 사진 찍어도 글자 인식이 안 됨. 직접 타이핑해야",
+      "summary": "실험 노트는 손글씨라 사진을 찍어도 글자 인식이 안 되므로 직접 타이핑해야 한다.",
+      "kind": "proposal",
+      "warnings": [],
+      "error": null
+    }
+  ],
+  "results": [
+    {
+      "id": "q01",
+      "title": "비전공자 대상 3분 발표 구성",
+      "question": "슬라이드를 어떻게 구성할까?",
+      "core": [
+        "m01",
+        "m02",
+        "m04",
+        "m05",
+        "m10"
+      ],
+      "check": "22도/26도·12개·±15% 숫자 보존, '전공자면 용어 그대로' 조건 유지, m01 을 '조건이 다르다'고 단정하지 않는지",
+      "C": {
+        "status": "ok",
+        "error": null,
+        "emptyReason": null,
+        "dropped": 0,
+        "candidates": 38,
+        "items": [
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "3장으로 구성해 보세요: ① 실험을 한 이유 ② 1·2차 결과 그래프 ③ 결론과 실험의 한계 한 줄. 결과는 한 장 안에서 구분해 보여주세요.",
+            "refs": [
+              "m10",
+              "m05",
+              "m19",
+              "m16"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "결과 장에서는 실험별 축 단위를 명시하고, 온도 등 측정 조건 차이도 짧게 표시해 보세요. 평균만 제시하기보다 오차 가능성도 함께 설명하는 편이 좋겠습니다.",
+            "refs": [
+              "m08",
+              "m01",
+              "m02"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "비전공자가 읽기 쉬운 표현을 쓰고 글자는 24pt 이상으로 맞춰 보세요. 다만 '광합성 효율'을 '잎이 자란 정도'로 바꿀 때는 실제 측정 내용과 뜻이 맞는지 확인하세요.",
+            "refs": [
+              "m04",
+              "m24"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "결론의 한계를 정하기 전에 대조군의 물 주는 시간 차이와 빨간 LED 화분의 창가 위치가 결과에 영향을 주었는지 확인이 필요합니다. 메모는 그 영향이 있는지 모르거나 햇빛 영향일 수도 있다고 봅니다.",
+            "refs": [
+              "m09",
+              "m23"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "그래프를 만들기 전에 CSV의 빈 칸 처리 방식을 확인하세요. 메모에는 빈 칸을 0으로 채우면 평균이 내려간다고 적혀 있습니다.",
+            "refs": [
+              "m13"
+            ]
+          },
+          {
+            "section": "direct",
+            "keywordOnly": true,
+            "body": "대시보드 로딩이 3초 넘으면 심사위원이 기다리다 지칠 듯. 캐시 넣어야",
+            "refs": [
+              "m37"
+            ]
+          }
+        ],
+        "keywordOnly": [
+          "m37"
+        ],
+        "usage": {
+          "input": 4915,
+          "cached": 0,
+          "output": 2325,
+          "reasoning": 0,
+          "ms": 28095,
+          "calls": 2
+        },
+        "cited": [
+          "m01",
+          "m02",
+          "m04",
+          "m05",
+          "m08",
+          "m09",
+          "m10",
+          "m13",
+          "m16",
+          "m19",
+          "m23",
+          "m24"
+        ],
+        "coreHits": [
+          "m10",
+          "m05",
+          "m01",
+          "m02",
+          "m04"
+        ],
+        "okHits": [
+          "m19",
+          "m16",
+          "m24",
+          "m23",
+          "m13"
+        ],
+        "falseLinks": [
+          "m08",
+          "m09"
+        ],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 1,
+        "cost": 0.01654,
+        "keywordOnlyFalse": [
+          "m37"
+        ]
+      },
+      "B": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "슬라이드는 3장으로 구성하세요. ① 실험을 한 이유(40초): 첫 장에서 왜 실험했는지 설명합니다. ② 결과 그래프(1분 30초): 1차와 2차 결과를 함께 보여주되, 각각의 축과 단위를 분리합니다. 평균뿐 아니라 표본의 분포도 보여줍니다. ③ 결론과 한계(50초): 두 실험을 함께 보고 말할 수 있는 결론을 제시하고, 해석의 한계를 한 줄로 덧붙입니다.",
+            "refs": [
+              "m10",
+              "m05",
+              "m08",
+              "m02",
+              "m16",
+              "m19"
+            ]
+          },
+          {
+            "section": "link_reason",
+            "body": "비전공자에게는 ‘광합성 효율’ 대신 ‘잎이 자란 정도’라고 설명하고, 글자는 24pt 이상으로 쓰세요.",
+            "refs": [
+              "m04",
+              "m24"
+            ]
+          },
+          {
+            "section": "objection",
+            "body": "실험 간 온도가 달라 숫자만 직접 비교하면 오해할 수 있습니다. 빨간 LED 쪽이 더 자란 것처럼 보여도 창가의 햇빛 영향일 수 있으므로 LED 색의 효과로 단정하지 마세요.",
+            "refs": [
+              "m01",
+              "m23"
+            ]
+          }
+        ],
+        "usage": {
+          "input": 1172,
+          "cached": 0,
+          "output": 769,
+          "reasoning": 0,
+          "ms": 9433,
+          "calls": 1
+        },
+        "cost": 0.005017,
+        "sentPrivate": true,
+        "cited": [
+          "m01",
+          "m02",
+          "m04",
+          "m05",
+          "m08",
+          "m10",
+          "m16",
+          "m19",
+          "m23",
+          "m24"
+        ],
+        "coreHits": [
+          "m10",
+          "m05",
+          "m02",
+          "m04",
+          "m01"
+        ],
+        "okHits": [
+          "m16",
+          "m19",
+          "m24",
+          "m23"
+        ],
+        "falseLinks": [
+          "m08"
+        ],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 1
+      },
+      "A": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "슬라이드는 3장으로 구성하세요. 한 장에 핵심 메시지 하나만 담고, 결과 해석에 시간을 가장 많이 배분합니다."
+          },
+          {
+            "section": "extra",
+            "body": "전문 용어는 쉬운 말로 바꾸고, 그래프에는 축과 단위를 표시하세요. 결과의 원인이나 효과를 실험이 입증한 범위보다 크게 주장하지 않는 것이 좋습니다."
+          }
+        ],
+        "usage": {
+          "input": 205,
+          "cached": 0,
+          "output": 242,
+          "reasoning": 0,
+          "ms": 3452,
+          "calls": 1
+        },
+        "cost": 0.001415
+      }
+    },
+    {
+      "id": "q02",
+      "title": "두 실험 비교 그래프 한 장 만들기",
+      "question": "두 실험을 한 그림에 어떻게 그릴까?",
+      "core": [
+        "m01",
+        "m02",
+        "m08"
+      ],
+      "check": "질문에 '단위'라는 말이 없는데 m08(축 단위)을 찾는지 — 표현이 다른 관련 메모",
+      "C": {
+        "status": "ok",
+        "error": null,
+        "emptyReason": null,
+        "dropped": 0,
+        "candidates": 38,
+        "items": [
+          {
+            "section": "direct",
+            "keywordOnly": false,
+            "body": "1차 결과만으로 결론 내리면 안 될 듯하며, 2차와 같이 봐야 한다는 메모가 있다.",
+            "refs": [
+              "m16"
+            ]
+          },
+          {
+            "section": "link_reason",
+            "keywordOnly": false,
+            "body": "두 결과를 같은 그림에서 나란히 보면 비교 목적에 맞지만, 측정 조건과 축 단위 차이를 함께 드러내야 숫자만 비교하는 오해를 줄일 수 있겠다.",
+            "refs": [
+              "m01",
+              "m08"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "그림 한 장 안에 1차와 2차를 좌우 패널로 배치하고 각 패널의 축 단위와 측정 조건을 명시해 보자. 가정: 두 축이 같은 물리량을 나타낸다면 단위를 통일한 뒤 동일한 눈금을 쓸 수 있다.",
+            "refs": [
+              "m01",
+              "m08"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "실제 데이터로 각 패널에 개별 관측값과 평균을 함께 표시하는 방안을 검토하자. 평균만 보여주는 위험과 표본의 불확실성을 함께 살피기 위한 선택이다.",
+            "refs": [
+              "m25",
+              "m02"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "CSV의 빈 칸 3개를 0으로 채우면 평균이 내려간다는 메모가 있다. 빈 칸의 원인과 처리 방침을 확인한 뒤 그래프에 반영하자.",
+            "refs": [
+              "m13"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "온도는 아침에만 측정되어 낮 온도는 모르며, 대조군의 물 주는 시간 차이가 결과에 영향을 주었는지도 확인되지 않았다. 조건 주석에 넣을 범위를 확인하자.",
+            "refs": [
+              "m20",
+              "m09"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "빨간 LED 쪽은 더 자란 것처럼 보이지만 창가에 있어 햇빛 영향일 수도 있다. 그래프에서 LED 효과로 단정하기 전에 확인하자.",
+            "refs": [
+              "m23"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "심사위원의 전공 여부를 확인해 축과 범례의 용어를 고르자. 글자는 뒤에서도 보이도록 24pt 이상을 기준으로 배치해 볼 수 있다.",
+            "refs": [
+              "m04",
+              "m24"
+            ]
+          },
+          {
+            "section": "direct",
+            "keywordOnly": true,
+            "body": "대시보드 로딩이 3초 넘으면 심사위원이 기다리다 지칠 듯. 캐시 넣어야",
+            "refs": [
+              "m37"
+            ]
+          }
+        ],
+        "keywordOnly": [
+          "m37"
+        ],
+        "usage": {
+          "input": 4777,
+          "cached": 0,
+          "output": 2287,
+          "reasoning": 0,
+          "ms": 28029,
+          "calls": 2
+        },
+        "cited": [
+          "m01",
+          "m02",
+          "m04",
+          "m08",
+          "m09",
+          "m13",
+          "m16",
+          "m20",
+          "m23",
+          "m24",
+          "m25"
+        ],
+        "coreHits": [
+          "m01",
+          "m08",
+          "m02"
+        ],
+        "okHits": [
+          "m16",
+          "m13",
+          "m23"
+        ],
+        "falseLinks": [
+          "m25",
+          "m20",
+          "m09",
+          "m04",
+          "m24"
+        ],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 1,
+        "cost": 0.016212,
+        "keywordOnlyFalse": [
+          "m37"
+        ]
+      },
+      "B": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "한 장 안에 1차·2차 실험을 나란히 배치하세요. 축 단위를 먼저 cm 또는 mm로 통일하고, 각 실험의 평균과 개별 측정값을 함께 표시하면 결과와 분포를 비교할 수 있습니다.",
+            "refs": [
+              "m08",
+              "m02",
+              "m16"
+            ]
+          },
+          {
+            "section": "objection",
+            "body": "그래프에 측정 조건이 다르다는 주석을 넣고, 숫자 차이를 곧바로 실험 효과로 해석하지 마세요. 온도 외에도 대조군 물 주기와 햇빛이 결과에 영향을 줬을 가능성이 있습니다.",
+            "refs": [
+              "m01",
+              "m09",
+              "m23"
+            ]
+          },
+          {
+            "section": "extra",
+            "body": "그래프를 만들기 전에 CSV의 빈 칸을 확인하세요. 0으로 채우면 평균이 내려갑니다. 글자는 24pt 이상으로 유지하세요.",
+            "refs": [
+              "m13",
+              "m24"
+            ]
+          }
+        ],
+        "usage": {
+          "input": 1175,
+          "cached": 0,
+          "output": 556,
+          "reasoning": 0,
+          "ms": 7085,
+          "calls": 1
+        },
+        "cost": 0.003955,
+        "sentPrivate": true,
+        "cited": [
+          "m01",
+          "m02",
+          "m08",
+          "m09",
+          "m13",
+          "m16",
+          "m23",
+          "m24"
+        ],
+        "coreHits": [
+          "m08",
+          "m02",
+          "m01"
+        ],
+        "okHits": [
+          "m16",
+          "m23",
+          "m13"
+        ],
+        "falseLinks": [
+          "m09",
+          "m24"
+        ],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 1
+      },
+      "A": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "한 그림 안에 실험 조건을 가로축, 결과값을 세로축으로 두고 1차·2차 실험을 서로 다른 색과 표식으로 나란히 표시하세요. 조건이 순서나 시간에 따라 이어진다면 두 실험을 각각 선으로 연결하면 됩니다."
+          },
+          {
+            "section": "extra",
+            "body": "심사위원이 차이를 바로 읽을 수 있도록 단위와 주요 수치를 표시하고, 반복 측정값이 있다면 오차막대를 추가하세요. 색뿐 아니라 원·삼각형 등 표식도 구분하세요."
+          }
+        ],
+        "usage": {
+          "input": 208,
+          "cached": 0,
+          "output": 195,
+          "reasoning": 0,
+          "ms": 3693,
+          "calls": 1
+        },
+        "cost": 0.001183
+      }
+    },
+    {
+      "id": "q03",
+      "title": "심사 데모 방식 결정",
+      "question": "실시간 데모와 녹화 중 무엇을 준비할까?",
+      "core": [
+        "m06",
+        "m07",
+        "m11",
+        "m25"
+      ],
+      "check": "m06(녹화 준비)과 m07(실시간)을 한쪽으로 합치지 않고 상충으로 보여주는지. m37 은 AI 미허용이라 '키워드 일치' 항목으로만 나와야 함",
+      "C": {
+        "status": "ok",
+        "error": null,
+        "emptyReason": null,
+        "dropped": 0,
+        "candidates": 38,
+        "items": [
+          {
+            "section": "direct",
+            "keywordOnly": false,
+            "body": "심사 때 데모는 실시간으로 돌리자는 제안이 있었고, 녹화만 틀면 모킹처럼 보일 수 있다는 우려가 나왔다.",
+            "refs": [
+              "m07"
+            ]
+          },
+          {
+            "section": "direct",
+            "keywordOnly": false,
+            "body": "대시보드 데모는 와이파이가 끊기면 진행할 수 없다는 우려와 녹화 영상도 준비할지에 대한 질문이 있었다.",
+            "refs": [
+              "m06"
+            ]
+          },
+          {
+            "section": "link_reason",
+            "keywordOnly": false,
+            "body": "심사장 와이파이가 불확실하므로 실시간 시연의 연결 위험과 녹화만 보여줄 때의 인상 우려를 함께 고려해야 한다.",
+            "refs": [
+              "m07",
+              "m06"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "실시간 데모를 우선 준비하되, 연결이 끊길 때 보여줄 녹화본도 예비로 준비하는 방안을 권한다. 가정: 심사 진행 규칙상 연결 장애 시 녹화본으로 전환할 수 있다.",
+            "refs": [
+              "m07",
+              "m06"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "심사 중 녹화본으로 전환할 수 있는지와 실제 데모가 와이파이 없이 가능한지는 확인되지 않았다.",
+            "refs": []
+          },
+          {
+            "section": "direct",
+            "keywordOnly": true,
+            "body": "대시보드 로딩이 3초 넘으면 심사위원이 기다리다 지칠 듯. 캐시 넣어야",
+            "refs": [
+              "m37"
+            ]
+          }
+        ],
+        "keywordOnly": [
+          "m37"
+        ],
+        "usage": {
+          "input": 3840,
+          "cached": 0,
+          "output": 1777,
+          "reasoning": 0,
+          "ms": 21757,
+          "calls": 2
+        },
+        "cited": [
+          "m06",
+          "m07"
+        ],
+        "coreHits": [
+          "m07",
+          "m06"
+        ],
+        "okHits": [],
+        "falseLinks": [],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 0.5,
+        "cost": 0.012725,
+        "keywordOnlyFalse": []
+      },
+      "B": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "실시간 데모를 기본으로 준비하되, 와이파이가 끊길 때 보여줄 녹화 영상도 함께 준비하세요.",
+            "refs": [
+              "m06",
+              "m07"
+            ]
+          },
+          {
+            "section": "extra",
+            "body": "심사위원이 바로 볼 수 있도록 로그인 없는 데모 페이지를 준비하고, 실제 실험 데이터를 사용하세요.",
+            "refs": [
+              "m11",
+              "m25"
+            ]
+          }
+        ],
+        "usage": {
+          "input": 1182,
+          "cached": 0,
+          "output": 256,
+          "reasoning": 0,
+          "ms": 3722,
+          "calls": 1
+        },
+        "cost": 0.002462,
+        "sentPrivate": true,
+        "cited": [
+          "m06",
+          "m07",
+          "m11",
+          "m25"
+        ],
+        "coreHits": [
+          "m06",
+          "m07",
+          "m11",
+          "m25"
+        ],
+        "okHits": [],
+        "falseLinks": [],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 1
+      },
+      "A": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "녹화 데모를 기본으로 준비하고, 가능하다면 오프라인에서 실행되는 짧은 실시간 데모를 보조로 준비하세요. 와이파이 상태가 불확실하므로 심사 중 시연이 중단될 위험을 줄일 수 있습니다."
+          },
+          {
+            "section": "extra",
+            "body": "실시간 데모가 인터넷에 의존한다면 현장에서 필수 시연으로 삼지 마세요. 심사 규정상 실시간 시연이 필요한지도 미리 확인하세요."
+          }
+        ],
+        "usage": {
+          "input": 215,
+          "cached": 0,
+          "output": 192,
+          "reasoning": 0,
+          "ms": 3120,
+          "calls": 1
+        },
+        "cost": 0.001175
+      }
+    },
+    {
+      "id": "q04",
+      "title": "심사용 데모 페이지 개발",
+      "question": "데모 페이지에서 꼭 챙길 것은?",
+      "core": [
+        "m11",
+        "m18",
+        "m21",
+        "m25"
+      ],
+      "check": "m37 이 모델에 전달되지 않고 키워드 항목으로만 나오는지, 소수점 둘째 자리·3초 숫자 보존",
+      "C": {
+        "status": "ok",
+        "error": null,
+        "emptyReason": null,
+        "dropped": 0,
+        "candidates": 38,
+        "items": [
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "로그인 없이 바로 대시보드가 열리도록 구성하고, API 키가 필요하다면 서버에서만 다루세요.",
+            "refs": [
+              "m11",
+              "m21"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "실시간 데모를 기본으로 준비하되, 와이파이 장애에 대비할 녹화 영상도 백업으로 마련하는 선택지가 있습니다.",
+            "refs": [
+              "m07",
+              "m06"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "실제 실험 데이터를 사용하고 숫자는 소수점 둘째 자리까지만 표시하세요. CSV 빈칸은 0으로 채우지 말고 누락값으로 구분하는 방안을 검토하세요.",
+            "refs": [
+              "m25",
+              "m18",
+              "m13"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "1차와 2차 결과를 함께 보여주되 측정 조건과 축 단위를 각각 명시하세요. 단위를 확인하고 환산하기 전에는 한 그림에 그대로 합치지 않는 편이 안전합니다.",
+            "refs": [
+              "m16",
+              "m01",
+              "m08"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "평균만 제시하지 말고 표본 수와 오차 가능성을 함께 표시하는 방안을 검토하세요. 2차 LED 거리의 측정 오차도 관련 결과에 덧붙일 수 있습니다.",
+            "refs": [
+              "m02",
+              "m03"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "대조군 물 주기 시간 차이의 영향은 확인되지 않았고, 빨간 LED 화분의 성장에는 햇빛이 영향을 줬을 가능성도 있습니다. 온도는 아침에만 측정됐으므로 결과 설명에서 이 한계들을 확인해 주세요.",
+            "refs": [
+              "m09",
+              "m23",
+              "m20"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "차트 색을 슬라이드 그래프와 맞춰 확인하세요. 라이브러리를 바꿀 예정이라면 색상 불일치 여부를 특히 점검하세요.",
+            "refs": [
+              "m15"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "심사위원의 전공 여부가 확인되지 않았습니다. 비전공자에게는 쉬운 표현을 쓰고 전공자에게는 용어를 유지하자는 메모가 있으므로, 대상에 맞는 라벨을 확인하세요.",
+            "refs": [
+              "m04"
+            ]
+          },
+          {
+            "section": "direct",
+            "keywordOnly": true,
+            "body": "대시보드 로딩이 3초 넘으면 심사위원이 기다리다 지칠 듯. 캐시 넣어야",
+            "refs": [
+              "m37"
+            ]
+          }
+        ],
+        "keywordOnly": [
+          "m37"
+        ],
+        "usage": {
+          "input": 5120,
+          "cached": 0,
+          "output": 2669,
+          "reasoning": 0,
+          "ms": 31650,
+          "calls": 2
+        },
+        "cited": [
+          "m01",
+          "m02",
+          "m03",
+          "m04",
+          "m06",
+          "m07",
+          "m08",
+          "m09",
+          "m11",
+          "m13",
+          "m15",
+          "m16",
+          "m18",
+          "m20",
+          "m21",
+          "m23",
+          "m25"
+        ],
+        "coreHits": [
+          "m11",
+          "m21",
+          "m25",
+          "m18"
+        ],
+        "okHits": [
+          "m07",
+          "m06",
+          "m15"
+        ],
+        "falseLinks": [
+          "m13",
+          "m16",
+          "m01",
+          "m08",
+          "m02",
+          "m03",
+          "m09",
+          "m23",
+          "m20",
+          "m04"
+        ],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 1,
+        "cost": 0.018465,
+        "keywordOnlyFalse": []
+      },
+      "B": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "로그인 없이 바로 열리고, 실제 실험 데이터를 보여주는 페이지를 우선 만드세요.",
+            "refs": [
+              "m11",
+              "m25"
+            ]
+          },
+          {
+            "section": "direct",
+            "body": "실험 목적과 결과를 이해하기 쉽게 보여주세요. 비전공자에게는 ‘잎이 자란 정도’라는 표현을 쓰고, 1차와 2차 결과를 함께 보되 측정 조건과 단위 차이를 명시하세요.",
+            "refs": [
+              "m10",
+              "m04",
+              "m16",
+              "m01",
+              "m08"
+            ]
+          },
+          {
+            "section": "direct",
+            "body": "평균만 제시하지 말고 데이터의 불확실성과 한계를 함께 보여주세요. CSV의 빈 칸은 0으로 채우지 마세요.",
+            "refs": [
+              "m02",
+              "m13",
+              "m18",
+              "m23"
+            ]
+          },
+          {
+            "section": "objection",
+            "body": "실시간 데모를 기본으로 하되, 와이파이 장애에 대비해 녹화 영상도 준비하세요.",
+            "refs": [
+              "m07",
+              "m06"
+            ]
+          },
+          {
+            "section": "extra",
+            "body": "API 키가 필요하다면 프론트 코드에 넣지 마세요.",
+            "refs": [
+              "m21"
+            ]
+          },
+          {
+            "section": "link_reason",
+            "body": "속도와 데이터 준비도 이틀 안에 확인할 항목입니다.",
+            "refs": [
+              "m37",
+              "m40"
+            ]
+          }
+        ],
+        "usage": {
+          "input": 1171,
+          "cached": 0,
+          "output": 1125,
+          "reasoning": 0,
+          "ms": 13221,
+          "calls": 1
+        },
+        "cost": 0.006796,
+        "sentPrivate": true,
+        "cited": [
+          "m01",
+          "m02",
+          "m04",
+          "m06",
+          "m07",
+          "m08",
+          "m10",
+          "m11",
+          "m13",
+          "m16",
+          "m18",
+          "m21",
+          "m23",
+          "m25",
+          "m37",
+          "m40"
+        ],
+        "coreHits": [
+          "m11",
+          "m25",
+          "m18",
+          "m21"
+        ],
+        "okHits": [
+          "m07",
+          "m06",
+          "m37"
+        ],
+        "falseLinks": [
+          "m10",
+          "m04",
+          "m16",
+          "m01",
+          "m08",
+          "m02",
+          "m13",
+          "m23",
+          "m40"
+        ],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 1
+      },
+      "A": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "심사위원이 설명 없이도 핵심 가치를 1분 안에 이해하고 직접 확인할 수 있게 구성하세요."
+          },
+          {
+            "section": "direct",
+            "body": "실제 서비스처럼 보이는 것보다 핵심 시나리오가 끊김 없이 작동하는 것이 중요합니다."
+          },
+          {
+            "section": "direct",
+            "body": "데이터의 출처와 실제 구현 범위를 명확히 표시하세요."
+          },
+          {
+            "section": "direct",
+            "body": "접속 실패와 조작 오류에 대비하세요."
+          },
+          {
+            "section": "extra",
+            "body": "이틀 일정은 핵심 구현과 검증에 집중하세요."
+          }
+        ],
+        "usage": {
+          "input": 204,
+          "cached": 0,
+          "output": 371,
+          "reasoning": 0,
+          "ms": 4899,
+          "calls": 1
+        },
+        "cost": 0.002059
+      }
+    },
+    {
+      "id": "q05",
+      "title": "결론 슬라이드 작성",
+      "question": "빨간 LED 가 더 효과적이라고 써도 될까?",
+      "core": [
+        "m01",
+        "m02",
+        "m16",
+        "m23"
+      ],
+      "check": "철회된 m36(센서 고장)이 절대 나오지 않는지. 모델이 '빨간 LED 가 효과적'이라고 단정하지 않고 창가·표본 수를 반론으로 드는지",
+      "C": {
+        "status": "ok",
+        "error": null,
+        "emptyReason": null,
+        "dropped": 0,
+        "candidates": 38,
+        "items": [
+          {
+            "section": "direct",
+            "keywordOnly": false,
+            "body": "빨간 LED 쪽이 더 자란 것처럼 보였지만, 해당 화분은 창가에 있었고 햇빛 영향일 수도 있다는 메모가 있어요.",
+            "refs": [
+              "m23"
+            ]
+          },
+          {
+            "section": "link_reason",
+            "keywordOnly": false,
+            "body": "제 해석으로는 관찰된 차이가 LED 효과 때문이라고 분리하기 어려우므로, 지금 자료만으로 ‘빨간 LED가 더 효과적’이라고 단정하기는 어려워요.",
+            "refs": [
+              "m23",
+              "m09"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "가정: 1·2차 결과를 함께 확인해도 해당 관찰이 유지된다면, 결론 문장으로 ‘빨간 LED 쪽에서 더 자란 것처럼 보였지만, 창가 햇빛 등 조건의 영향이 있을 수 있어 LED 효과로 단정하기 어렵다’를 고려해요.",
+            "refs": [
+              "m23",
+              "m16",
+              "m19"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "1차와 2차를 함께 살펴야 한다는 의견이 있지만, 두 실험의 측정 조건이 달라 보인다는 메모도 있어요. 각 결과와 조건을 확인한 뒤 결론 문장이 두 실험에 적합한지 점검해요.",
+            "refs": [
+              "m16",
+              "m01"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "CSV의 빈 칸 처리와 표본의 불확실성이 결론에 영향을 줄 수 있어요. 빈 칸의 의미와 처리 방식을 확인하고 평균만으로 판단하지 않도록 해요.",
+            "refs": [
+              "m13",
+              "m02"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "심사위원이 비전공자인지 전공자인지 확인이 필요해요. 메모는 대상에 따라 ‘잎이 자란 정도’와 ‘광합성 효율’ 중 사용할 표현을 달리 제안해요.",
+            "refs": [
+              "m04"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "결론 문장과 한계가 뒤에서도 보이도록 글자 크기를 24pt 이상으로 검토해요.",
+            "refs": [
+              "m24"
+            ]
+          },
+          {
+            "section": "direct",
+            "keywordOnly": true,
+            "body": "대시보드 로딩이 3초 넘으면 심사위원이 기다리다 지칠 듯. 캐시 넣어야",
+            "refs": [
+              "m37"
+            ]
+          }
+        ],
+        "keywordOnly": [
+          "m37"
+        ],
+        "usage": {
+          "input": 4659,
+          "cached": 0,
+          "output": 2240,
+          "reasoning": 0,
+          "ms": 26658,
+          "calls": 2
+        },
+        "cited": [
+          "m01",
+          "m02",
+          "m04",
+          "m09",
+          "m13",
+          "m16",
+          "m19",
+          "m23",
+          "m24"
+        ],
+        "coreHits": [
+          "m23",
+          "m16",
+          "m01",
+          "m02"
+        ],
+        "okHits": [
+          "m09",
+          "m19",
+          "m13"
+        ],
+        "falseLinks": [
+          "m04",
+          "m24"
+        ],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 1,
+        "cost": 0.015859,
+        "keywordOnlyFalse": [
+          "m37"
+        ]
+      },
+      "B": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "‘빨간 LED가 더 효과적이다’라고 단정하기는 어렵습니다. 결론 문장으로는 ‘빨간 LED에서 잎이 더 자란 것처럼 보였지만, 햇빛 등 실험 조건의 영향을 배제할 수 없다’가 적절합니다.",
+            "refs": [
+              "m23",
+              "m04"
+            ]
+          },
+          {
+            "section": "link_reason",
+            "body": "표본이 작고 두 실험의 측정 조건도 달라, 관찰된 차이를 LED 색의 효과로 확정하기 어렵습니다.",
+            "refs": [
+              "m02",
+              "m01"
+            ]
+          }
+        ],
+        "usage": {
+          "input": 1171,
+          "cached": 0,
+          "output": 324,
+          "reasoning": 0,
+          "ms": 4455,
+          "calls": 1
+        },
+        "cost": 0.002791,
+        "sentPrivate": true,
+        "cited": [
+          "m01",
+          "m02",
+          "m04",
+          "m23"
+        ],
+        "coreHits": [
+          "m23",
+          "m02",
+          "m01"
+        ],
+        "okHits": [],
+        "falseLinks": [
+          "m04"
+        ],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 0.75
+      },
+      "A": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "실험 결과와 분석을 확인하기 전에는 빨간 LED가 더 효과적이라고 단정하지 않는 것이 좋습니다."
+          },
+          {
+            "section": "extra",
+            "body": "결과가 뒷받침한다면 결론을 “본 실험 조건에서 빨간 LED는 비교 대상보다 더 높은 효과를 보였다”로 작성할 수 있습니다."
+          }
+        ],
+        "usage": {
+          "input": 204,
+          "cached": 0,
+          "output": 156,
+          "reasoning": 0,
+          "ms": 2761,
+          "calls": 1
+        },
+        "cost": 0.000984
+      }
+    },
+    {
+      "id": "q06",
+      "title": "제출물 체크리스트",
+      "question": "영상·폼·노션에서 빠뜨리기 쉬운 것은?",
+      "core": [
+        "m12",
+        "m22",
+        "m39"
+      ],
+      "check": "5분·11월 15일 18시 숫자 보존, '배속 표시' 조건 유지",
+      "C": {
+        "status": "ok",
+        "error": null,
+        "emptyReason": null,
+        "dropped": 0,
+        "candidates": 37,
+        "items": [
+          {
+            "section": "direct",
+            "keywordOnly": false,
+            "body": "제출 영상은 5분 이내이며, 배속을 쓰면 우측 상단에 표시해야 한다.",
+            "refs": [
+              "m12"
+            ]
+          },
+          {
+            "section": "direct",
+            "keywordOnly": false,
+            "body": "제출 폼은 대표자가 11월 15일 18시 전에 내야 한다.",
+            "refs": [
+              "m39"
+            ]
+          },
+          {
+            "section": "direct",
+            "keywordOnly": false,
+            "body": "팀 노션에 회의록을 올리지 않으면 노션 특별상을 받을 수 없다.",
+            "refs": [
+              "m22"
+            ]
+          },
+          {
+            "section": "direct",
+            "keywordOnly": false,
+            "body": "발표 자료에 남의 사진을 쓰면 출처를 적어야 한다.",
+            "refs": [
+              "m17"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "노션 회의록은 제출 자체의 필수 조건과 구분해 ‘특별상 관련 조건’으로 체크리스트에 넣으면 좋겠다.",
+            "refs": [
+              "m22"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "공식 안내문 기준으로 정리해야 하므로 메모의 조건을 안내문 원문과 대조해 확인해야 한다. 특히 폼 제출 연도와 시간대는 메모에 명시되지 않았다.",
+            "refs": [
+              "m39"
+            ]
+          }
+        ],
+        "keywordOnly": [],
+        "usage": {
+          "input": 3940,
+          "cached": 0,
+          "output": 1976,
+          "reasoning": 0,
+          "ms": 24391,
+          "calls": 2
+        },
+        "cited": [
+          "m12",
+          "m17",
+          "m22",
+          "m39"
+        ],
+        "coreHits": [
+          "m12",
+          "m39",
+          "m22"
+        ],
+        "okHits": [
+          "m17"
+        ],
+        "falseLinks": [],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 1,
+        "cost": 0.01382,
+        "keywordOnlyFalse": []
+      },
+      "B": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "영상: 5분 이내인지 확인하고, 배속을 사용했다면 우측 상단에 표시한다.",
+            "refs": [
+              "m12"
+            ]
+          },
+          {
+            "section": "direct",
+            "body": "폼: 대표자가 11월 15일 18시 전에 제출한다.",
+            "refs": [
+              "m39"
+            ]
+          },
+          {
+            "section": "direct",
+            "body": "노션: 노션 특별상을 받으려면 팀 노션에 회의록을 올려야 한다.",
+            "refs": [
+              "m22"
+            ]
+          },
+          {
+            "section": "objection",
+            "body": "메모에서 공식 안내문이라고 명시된 것은 영상 조건뿐이다. 폼과 노션 조건도 안내문 원문에서 확인하고, 메모에 없는 추가 제출 조건이 있는지 대조해야 한다.",
+            "refs": [
+              "m12",
+              "m39",
+              "m22"
+            ]
+          }
+        ],
+        "usage": {
+          "input": 1166,
+          "cached": 0,
+          "output": 401,
+          "reasoning": 0,
+          "ms": 5343,
+          "calls": 1
+        },
+        "cost": 0.003171,
+        "sentPrivate": true,
+        "cited": [
+          "m12",
+          "m22",
+          "m39"
+        ],
+        "coreHits": [
+          "m12",
+          "m39",
+          "m22"
+        ],
+        "okHits": [],
+        "falseLinks": [],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 1
+      },
+      "A": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "공식 안내문을 확인할 수 없어 필수 제출 조건을 확정할 수 없습니다. 아래 항목을 안내문과 대조해 체크하세요."
+          },
+          {
+            "section": "direct",
+            "body": "영상: 길이와 파일 형식, 필수 포함 내용, 재생 가능 여부, 제출 링크의 접근 권한을 확인하세요."
+          },
+          {
+            "section": "direct",
+            "body": "폼: 필수 질문 누락, 팀 정보와 연락처, 영상·노션 링크, 최종 제출 완료 여부를 확인하세요."
+          },
+          {
+            "section": "direct",
+            "body": "노션: 필수 항목과 첨부물, 페이지 공개 범위, 하위 페이지와 첨부 파일의 접근 권한을 확인하세요."
+          },
+          {
+            "section": "extra",
+            "body": "공통: 안내문에 명시된 마감 시각과 시간대, 제출 대상 및 경로, 수정 가능 여부를 확인하세요."
+          }
+        ],
+        "usage": {
+          "input": 199,
+          "cached": 0,
+          "output": 312,
+          "reasoning": 0,
+          "ms": 4368,
+          "calls": 1
+        },
+        "cost": 0.001759
+      }
+    },
+    {
+      "id": "q07",
+      "title": "실험 데이터 정리",
+      "question": "CSV 를 정리할 때 조심할 점은?",
+      "core": [
+        "m03",
+        "m08",
+        "m13"
+      ],
+      "check": "'0으로 채우면 평균이 내려감' 조건 보존, m28(회비 3만원)을 숫자 때문에 억지 연결하지 않는지",
+      "C": {
+        "status": "ok",
+        "error": null,
+        "emptyReason": null,
+        "dropped": 0,
+        "candidates": 37,
+        "items": [
+          {
+            "section": "direct",
+            "keywordOnly": false,
+            "body": "실험 데이터 CSV에 빈 칸 3개가 있고, 0으로 채우면 평균이 내려갑니다.",
+            "refs": [
+              "m13"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "원본은 그대로 보존하고 작업용 사본에서 빈 칸을 표시하세요. 빈 칸을 일괄적으로 0으로 채우기 전에 처리 기준을 확인하면 좋겠습니다.",
+            "refs": [
+              "m13"
+            ]
+          },
+          {
+            "section": "direct",
+            "keywordOnly": false,
+            "body": "실험1과 실험2의 축 단위는 각각 cm와 mm이며, 한 그림에 합치면 왜곡됩니다.",
+            "refs": [
+              "m08"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "작업용 파일에 각 값의 단위를 명시하고, 한 그림에 합칠 계획이라면 단위를 통일하는 선택지가 있습니다. 변환 전 값과 변환 기준도 확인할 수 있게 남겨 두세요.",
+            "refs": [
+              "m08"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "2차 실험 LED 거리에는 자로 측정한 1cm 단위 오차가 있다는 메모를 데이터와 함께 남겨 두세요.",
+            "refs": [
+              "m03"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "두 실험은 측정 조건이 달라 보이며 숫자만 비교하면 오해할 수도 있습니다. 온도는 매일 아침 한 번만 측정했고 낮 온도는 모르므로, 비교에 필요한 조건 정보를 확인하세요.",
+            "refs": [
+              "m01",
+              "m20"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "빨간 LED 쪽이 더 자란 것처럼 보이지만 해당 화분의 창가 위치에 따른 햇빛 영향일 수도 있습니다. 대조군의 물 주는 시간이 하루 달랐던 점도 결과에 영향이 있는지 확인되지 않았으므로 함께 기록해 두세요.",
+            "refs": [
+              "m23",
+              "m09"
+            ]
+          }
+        ],
+        "keywordOnly": [],
+        "usage": {
+          "input": 4226,
+          "cached": 0,
+          "output": 1980,
+          "reasoning": 0,
+          "ms": 23793,
+          "calls": 2
+        },
+        "cited": [
+          "m01",
+          "m03",
+          "m08",
+          "m09",
+          "m13",
+          "m20",
+          "m23"
+        ],
+        "coreHits": [
+          "m13",
+          "m08",
+          "m03"
+        ],
+        "okHits": [
+          "m20"
+        ],
+        "falseLinks": [
+          "m01",
+          "m23",
+          "m09"
+        ],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 1,
+        "cost": 0.014126,
+        "keywordOnlyFalse": []
+      },
+      "B": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "원본 CSV는 보존하고, 별도 사본에서 정리하세요. 빈 칸 3개는 결측으로 남기고 0으로 채우지 마세요. 평균이 내려갈 수 있습니다.",
+            "refs": [
+              "m13"
+            ]
+          },
+          {
+            "section": "direct",
+            "body": "두 실험의 단위가 다르므로 합치기 전에 단위를 확인하세요. 단위를 통일한다면 변환한 값을 명확히 구분하세요.",
+            "refs": [
+              "m08"
+            ]
+          },
+          {
+            "section": "direct",
+            "body": "실험 조건과 측정의 한계를 함께 기록하세요. 1차와 2차의 온도가 다르고, 온도는 매일 아침 한 번만 측정했습니다. 2차 LED 거리에는 1cm 단위 오차가 있습니다.",
+            "refs": [
+              "m01",
+              "m20",
+              "m03"
+            ]
+          },
+          {
+            "section": "direct",
+            "body": "대조군의 물 주는 시간 차이와 빨간 LED 화분의 창가 위치도 분석 전에 확인할 수 있도록 남기세요. 결과에 영향을 줬을 가능성이 있습니다.",
+            "refs": [
+              "m09",
+              "m23"
+            ]
+          },
+          {
+            "section": "extra",
+            "body": "평균만 남기지 말고 개별 측정값도 보존하세요. 표본이 12개뿐이고 ±15% 정도는 오차일 수 있습니다.",
+            "refs": [
+              "m02"
+            ]
+          }
+        ],
+        "usage": {
+          "input": 1163,
+          "cached": 0,
+          "output": 640,
+          "reasoning": 0,
+          "ms": 8200,
+          "calls": 1
+        },
+        "cost": 0.004363,
+        "sentPrivate": true,
+        "cited": [
+          "m01",
+          "m02",
+          "m03",
+          "m08",
+          "m09",
+          "m13",
+          "m20",
+          "m23"
+        ],
+        "coreHits": [
+          "m13",
+          "m08",
+          "m03"
+        ],
+        "okHits": [
+          "m20"
+        ],
+        "falseLinks": [
+          "m01",
+          "m09",
+          "m23",
+          "m02"
+        ],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 1
+      },
+      "A": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "원본 CSV는 수정하지 말고 읽기 전용으로 보관하세요. 작업용 복사본을 별도 폴더에 만들고, 가능하면 원본의 체크섬도 기록하세요."
+          },
+          {
+            "section": "direct",
+            "body": "인코딩, 구분자, 따옴표, 줄바꿈을 확인하세요. 엑셀로 열고 저장하면 긴 숫자·앞자리 0·날짜가 자동 변환될 수 있으니 주의하세요."
+          },
+          {
+            "section": "direct",
+            "body": "열 이름과 단위, 자료형을 통일하고 결측값 표기를 구분하세요. 중복이나 이상치는 바로 삭제하지 말고 실험 기록과 대조해 처리 기준을 정하세요."
+          },
+          {
+            "section": "direct",
+            "body": "시료 ID와 측정값의 연결이 유지되는지 확인하세요. 파일을 합칠 때는 키의 중복과 누락, 행 수 변화를 검증하세요."
+          },
+          {
+            "section": "extra",
+            "body": "팀원이 재현할 수 있도록 정리 스크립트와 결과 파일의 버전을 함께 보관하세요."
+          }
+        ],
+        "usage": {
+          "input": 196,
+          "cached": 0,
+          "output": 361,
+          "reasoning": 0,
+          "ms": 4872,
+          "calls": 1
+        },
+        "cost": 0.002001
+      }
+    },
+    {
+      "id": "q08",
+      "title": "질의응답 대비",
+      "question": "어떤 질문이 들어올 것 같고 뭐라고 답할까?",
+      "core": [
+        "m02",
+        "m09",
+        "m14",
+        "m20",
+        "m23"
+      ],
+      "check": "m09·m20 의 '모르겠음' 을 사실로 바꾸지 않는지",
+      "C": {
+        "status": "ok",
+        "error": null,
+        "emptyReason": null,
+        "dropped": 0,
+        "candidates": 38,
+        "items": [
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "예상 질문: “왜 LED 색을 두 개만 썼나요?” 답변 초안: “두 색을 선택한 이유는 [실제 선정 기준]입니다. 다른 색에 대한 결과는 이번 실험만으로 판단할 수 없습니다.” 선정 기준은 확인 후 채워 주세요.",
+            "refs": [
+              "m14"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "예상 질문: “빨간 LED가 성장을 더 촉진했나요?” 답변 초안: “빨간 LED 쪽이 더 자란 것처럼 보였지만, 화분이 창가에 있어 햇빛 영향일 수도 있습니다. LED 색의 효과로 단정하기 어렵습니다.”",
+            "refs": [
+              "m23"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "예상 질문: “실험 조건은 일정했나요?” 답변 초안: “온도는 매일 아침 한 번 측정해 낮 온도는 모릅니다. 대조군은 물 주는 시간이 하루 달랐고, 결과에 영향을 줬는지는 확인되지 않았습니다.”",
+            "refs": [
+              "m20",
+              "m09"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "예상 질문: “1차와 2차 결과를 바로 비교해도 되나요?” 답변 초안: “두 실험은 측정 조건이 달라 보이고, 길이 단위도 달라 숫자만 바로 비교하면 오해할 수 있습니다. 조건과 단위를 확인해 함께 해석하겠습니다.”",
+            "refs": [
+              "m08",
+              "m01",
+              "m16"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "예상 질문: “데이터의 정확도와 빠진 값은 어떻게 처리했나요?” 답변 초안: “측정 정밀도를 고려해 대시보드는 소수점 둘째 자리까지 표시했습니다. CSV의 빈 칸 3개는 [실제 처리 방식]으로 처리했습니다.” 처리 방식을 확인한 뒤 답변을 완성해 주세요.",
+            "refs": [
+              "m18",
+              "m13"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "예상 질문: “결과를 얼마나 신뢰할 수 있나요?” 답변 초안: “표본은 12개이며, 메모상 ±15% 정도는 오차일 가능성이 있습니다. 평균만으로 판단하지 않고 자료를 함께 살펴봐야 합니다.”",
+            "refs": [
+              "m02"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "LED 두 색의 실제 선정 이유와 CSV 빈 칸의 실제 처리 방식은 메모에 없습니다. ±15% 오차 추정의 산출 근거도 확인되지 않아, 수치를 답변에 사용하기 전에 확인이 필요합니다.",
+            "refs": [
+              "m14",
+              "m13",
+              "m02"
+            ]
+          },
+          {
+            "section": "link_reason",
+            "keywordOnly": false,
+            "body": "심사위원의 전공 여부에 따라 설명 용어를 조정하면 답변의 대상에 맞추는 데 도움이 될 수 있습니다. 각 답변은 핵심과 한계를 먼저 말하고 30초 이내인지 연습해 보세요.",
+            "refs": [
+              "m04"
+            ]
+          },
+          {
+            "section": "direct",
+            "keywordOnly": true,
+            "body": "대시보드 로딩이 3초 넘으면 심사위원이 기다리다 지칠 듯. 캐시 넣어야",
+            "refs": [
+              "m37"
+            ]
+          }
+        ],
+        "keywordOnly": [
+          "m37"
+        ],
+        "usage": {
+          "input": 4791,
+          "cached": 0,
+          "output": 2553,
+          "reasoning": 0,
+          "ms": 30042,
+          "calls": 2
+        },
+        "cited": [
+          "m01",
+          "m02",
+          "m04",
+          "m08",
+          "m09",
+          "m13",
+          "m14",
+          "m16",
+          "m18",
+          "m20",
+          "m23"
+        ],
+        "coreHits": [
+          "m14",
+          "m23",
+          "m20",
+          "m09",
+          "m02"
+        ],
+        "okHits": [
+          "m01",
+          "m16"
+        ],
+        "falseLinks": [
+          "m08",
+          "m18",
+          "m13",
+          "m04"
+        ],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 1,
+        "cost": 0.017556,
+        "keywordOnlyFalse": [
+          "m37"
+        ]
+      },
+      "B": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "Q. 두 실험 결과를 숫자로 바로 비교해도 되나요?\nA. 측정 조건이 달라 직접 비교하면 오해할 수 있습니다. 1차는 22도, 2차는 26도였고, 그래프 단위도 각각 cm와 mm입니다. 두 결과를 함께 보되 이런 차이를 밝혀야 합니다.",
+            "refs": [
+              "m01",
+              "m08",
+              "m16"
+            ]
+          },
+          {
+            "section": "direct",
+            "body": "Q. 빨간 LED가 더 효과적이라고 결론 내릴 수 있나요?\nA. 빨간 LED 쪽이 더 자란 것처럼 보이지만, 그 화분이 창가에 있어 햇빛의 영향일 수도 있습니다. 따라서 LED 색의 효과라고 단정하기는 어렵습니다.",
+            "refs": [
+              "m23"
+            ]
+          },
+          {
+            "section": "direct",
+            "body": "Q. 표본이 적은데 결과를 믿을 수 있나요?\nA. 표본이 12개뿐이어서 약 ±15%는 오차일 수 있습니다. 평균만으로 판단하지 않고 이 한계를 함께 설명하겠습니다.",
+            "refs": [
+              "m02"
+            ]
+          },
+          {
+            "section": "direct",
+            "body": "Q. 실험 조건이나 측정에는 어떤 한계가 있나요?\nA. 2차 LED 거리는 자로 재서 1cm 단위의 오차가 있습니다. 또 온도는 매일 아침 한 번만 측정해 낮 온도는 알 수 없고, 대조군에 물을 준 시간도 하루 달라 결과에 영향을 줬는지는 모릅니다.",
+            "refs": [
+              "m03",
+              "m20",
+              "m09"
+            ]
+          },
+          {
+            "section": "direct",
+            "body": "Q. 데이터의 빈칸은 어떻게 처리했나요?\nA. CSV에 빈칸 3개가 있으며, 이를 0으로 채우면 평균이 내려갑니다. 실제 처리 방법은 메모에 없으므로 확인한 뒤 사실대로 답해야 합니다.",
+            "refs": [
+              "m13"
+            ]
+          },
+          {
+            "section": "direct",
+            "body": "Q. 왜 LED 색을 두 개만 사용했나요?\nA. 선택 이유는 메모에 없어 현재 답을 확정할 수 없습니다. 팀에서 실제 이유를 확인해 짧게 준비해야 합니다.",
+            "refs": [
+              "m14"
+            ]
+          },
+          {
+            "section": "direct",
+            "body": "Q. 대시보드 숫자는 실제 실험 데이터인가요? 시연 중 연결이 끊기면 어떻게 하나요?\nA. 대시보드에는 실제 실험 데이터를 사용하고, 심사 때는 실시간으로 시연할 계획입니다. 와이파이 장애에 대비해 녹화 영상도 준비할지 확인하겠습니다.",
+            "refs": [
+              "m25",
+              "m07",
+              "m06"
+            ]
+          }
+        ],
+        "usage": {
+          "input": 1169,
+          "cached": 0,
+          "output": 1120,
+          "reasoning": 0,
+          "ms": 14071,
+          "calls": 1
+        },
+        "cost": 0.006769,
+        "sentPrivate": true,
+        "cited": [
+          "m01",
+          "m02",
+          "m03",
+          "m06",
+          "m07",
+          "m08",
+          "m09",
+          "m13",
+          "m14",
+          "m16",
+          "m20",
+          "m23",
+          "m25"
+        ],
+        "coreHits": [
+          "m23",
+          "m02",
+          "m20",
+          "m09",
+          "m14"
+        ],
+        "okHits": [
+          "m01",
+          "m16"
+        ],
+        "falseLinks": [
+          "m08",
+          "m03",
+          "m13",
+          "m25",
+          "m07",
+          "m06"
+        ],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 1
+      },
+      "A": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "프로젝트 주제가 없어 공통 예상 질문으로 준비했습니다. 답변은 [ ]를 팀 상황에 맞게 채우면 각각 30초 이내로 말할 수 있습니다."
+          },
+          {
+            "section": "direct",
+            "body": "Q. 왜 이 문제를 선택했나요?\nA. [대상]이 겪는 [핵심 불편]이 중요하지만, 기존 방식은 [한계]가 있었습니다. 저희는 이를 [해결 방식]으로 개선하고자 했습니다."
+          },
+          {
+            "section": "direct",
+            "body": "Q. 기존 대안과 무엇이 다른가요?\nA. 기존 [대안]은 [한계]가 있는 반면, 저희는 [차별점]에 집중했습니다. 이를 통해 [대상]이 [기대 효과]를 얻도록 설계했습니다."
+          },
+          {
+            "section": "direct",
+            "body": "Q. 실제로 효과가 있다는 것을 어떻게 확인했나요?\nA. [검증 방법]으로 [핵심 지표]를 확인했고, [결과]를 얻었습니다. 다만 [검증 범위의 한계]가 있어 추가 검증이 필요합니다."
+          },
+          {
+            "section": "objection",
+            "body": "Q. 가장 큰 한계나 위험은 무엇인가요?\nA. 현재 가장 큰 한계는 [한계]입니다. 이를 줄이기 위해 [대응 방안]을 적용하거나 검토하고 있으며, 이후 [추가 검증]을 진행할 계획입니다."
+          },
+          {
+            "section": "direct",
+            "body": "Q. 앞으로 어떻게 발전시킬 계획인가요?\nA. 우선 [단기 과제]로 현재 문제를 보완하고, 이후 [중장기 과제]를 추진하겠습니다. 성과는 [측정 지표]로 확인하겠습니다."
+          }
+        ],
+        "usage": {
+          "input": 202,
+          "cached": 0,
+          "output": 548,
+          "reasoning": 0,
+          "ms": 7248,
+          "calls": 1
+        },
+        "cost": 0.002942
+      }
+    },
+    {
+      "id": "q09",
+      "title": "슬라이드 디자인과 가독성",
+      "question": "글자·색·그림에서 지킬 것은?",
+      "core": [
+        "m05",
+        "m15",
+        "m17",
+        "m24"
+      ],
+      "check": "24pt 보존",
+      "C": {
+        "status": "ok",
+        "error": null,
+        "emptyReason": null,
+        "dropped": 0,
+        "candidates": 38,
+        "items": [
+          {
+            "section": "direct",
+            "keywordOnly": false,
+            "body": "글자 크기에 관한 메모는 다음과 같다: 글자 24pt 아래는 뒤에서 안 보임.",
+            "refs": [
+              "m24"
+            ]
+          },
+          {
+            "section": "direct",
+            "keywordOnly": false,
+            "body": "차트 라이브러리를 바꾸면 색이 달라져 슬라이드 그래프와 안 맞음.",
+            "refs": [
+              "m15"
+            ]
+          },
+          {
+            "section": "direct",
+            "keywordOnly": false,
+            "body": "축 단위가 실험1은 cm, 실험2는 mm이므로 한 그림에 합치면 왜곡됨.",
+            "refs": [
+              "m08"
+            ]
+          },
+          {
+            "section": "direct",
+            "keywordOnly": false,
+            "body": "발표 자료에 남의 사진 쓰면 출처 적어야 함.",
+            "refs": [
+              "m17"
+            ]
+          },
+          {
+            "section": "ai_extension",
+            "keywordOnly": false,
+            "body": "평균을 제시하는 그림에는 표본 수와 오차 가능성도 함께 표시하는 방안을 검토해 보자.",
+            "refs": [
+              "m02"
+            ]
+          },
+          {
+            "section": "objection",
+            "keywordOnly": false,
+            "body": "두 실험의 측정 조건이 달라 보인다는 메모가 있으므로, 숫자를 비교하기 전에 조건을 확인하자.",
+            "refs": [
+              "m01"
+            ]
+          },
+          {
+            "section": "extra",
+            "keywordOnly": false,
+            "body": "팀 색상을 유지하면서 글자와 배경의 대비를 점검하고, 실제 발표 장소의 뒤쪽에서 읽히는지 시험해 보자.",
+            "refs": []
+          },
+          {
+            "section": "direct",
+            "keywordOnly": true,
+            "body": "대시보드 로딩이 3초 넘으면 심사위원이 기다리다 지칠 듯. 캐시 넣어야",
+            "refs": [
+              "m37"
+            ]
+          }
+        ],
+        "keywordOnly": [
+          "m37"
+        ],
+        "usage": {
+          "input": 4117,
+          "cached": 0,
+          "output": 1837,
+          "reasoning": 0,
+          "ms": 22336,
+          "calls": 2
+        },
+        "cited": [
+          "m01",
+          "m02",
+          "m08",
+          "m15",
+          "m17",
+          "m24"
+        ],
+        "coreHits": [
+          "m24",
+          "m15",
+          "m17"
+        ],
+        "okHits": [],
+        "falseLinks": [
+          "m08",
+          "m02",
+          "m01"
+        ],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 0.75,
+        "cost": 0.013302,
+        "keywordOnlyFalse": [
+          "m37"
+        ]
+      },
+      "B": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "글자는 24pt 이상으로 쓰세요.",
+            "refs": [
+              "m24"
+            ]
+          },
+          {
+            "section": "direct",
+            "body": "팀 색상을 유지하면서 슬라이드 그래프와 대시보드의 색을 맞추세요.",
+            "refs": [
+              "m15"
+            ]
+          },
+          {
+            "section": "direct",
+            "body": "실험 1과 2는 축 단위가 다르므로 한 그림에 그대로 합치지 말고, 남의 사진에는 출처를 적으세요.",
+            "refs": [
+              "m08",
+              "m17"
+            ]
+          }
+        ],
+        "usage": {
+          "input": 1167,
+          "cached": 0,
+          "output": 377,
+          "reasoning": 0,
+          "ms": 5327,
+          "calls": 1
+        },
+        "cost": 0.003052,
+        "sentPrivate": true,
+        "cited": [
+          "m08",
+          "m15",
+          "m17",
+          "m24"
+        ],
+        "coreHits": [
+          "m24",
+          "m15",
+          "m17"
+        ],
+        "okHits": [],
+        "falseLinks": [
+          "m08"
+        ],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": 0.75
+      },
+      "A": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "글자: 본문은 가급적 24pt 이상, 제목은 36pt 이상으로 시작하세요. 슬라이드마다 핵심 메시지 하나를 두고 문장과 항목 수를 줄이세요."
+          },
+          {
+            "section": "direct",
+            "body": "색: 팀 색상은 제목·강조·도형에 유지하되, 본문은 배경과 명도 차이가 큰 색을 쓰세요. 색만으로 정보를 구분하지 말고 라벨이나 패턴도 함께 사용하세요."
+          },
+          {
+            "section": "direct",
+            "body": "그림: 핵심을 설명하는 이미지와 그래프만 크게 배치하세요. 그래프의 축·범례·수치도 뒤에서 읽히도록 키우고, 장식이나 불필요한 요소는 줄이세요."
+          }
+        ],
+        "usage": {
+          "input": 200,
+          "cached": 0,
+          "output": 269,
+          "reasoning": 0,
+          "ms": 4159,
+          "calls": 1
+        },
+        "cost": 0.001545
+      }
+    },
+    {
+      "id": "q10",
+      "title": "뒤풀이 장소 정하기",
+      "question": "어디가 좋을까?",
+      "core": [],
+      "check": "관련 메모가 없으므로 '팀 자료 부족' 으로 끝나야 함. 간식·점심 메모를 억지로 연결하지 않는지",
+      "C": {
+        "status": "ok",
+        "error": null,
+        "emptyReason": "no_related_notes",
+        "dropped": 0,
+        "candidates": 37,
+        "items": [],
+        "keywordOnly": [],
+        "usage": {
+          "input": 2975,
+          "cached": 0,
+          "output": 1211,
+          "reasoning": 0,
+          "ms": 14262,
+          "calls": 1
+        },
+        "cited": [],
+        "coreHits": [],
+        "okHits": [],
+        "falseLinks": [],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": null,
+        "cost": 0.00903,
+        "keywordOnlyFalse": []
+      },
+      "B": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "학교 근처에서 팀이 함께 모일 수 있는 곳을 고르면 좋겠어요. 메모에는 장소 정보가 없어 특정 가게를 추천하기는 어렵습니다.",
+            "refs": []
+          }
+        ],
+        "usage": {
+          "input": 1157,
+          "cached": 0,
+          "output": 78,
+          "reasoning": 0,
+          "ms": 2017,
+          "calls": 1
+        },
+        "cost": 0.001547,
+        "sentPrivate": true,
+        "cited": [],
+        "coreHits": [],
+        "okHits": [],
+        "falseLinks": [],
+        "forbiddenHits": [],
+        "trickyHits": [],
+        "invented": 0,
+        "coreRecall": null
+      },
+      "A": {
+        "items": [
+          {
+            "section": "direct",
+            "body": "학교 근처에서 팀원 전원이 함께 앉을 수 있는 식당이 좋아요. 대회 후 편하게 이야기할 수 있도록 고깃집이나 한식 식당을 먼저 찾아보세요."
+          },
+          {
+            "section": "extra",
+            "body": "후보를 고를 때는 도보 거리, 단체석과 예약 가능 여부, 영업시간, 팀원의 음식 제한을 확인하세요."
+          }
+        ],
+        "usage": {
+          "input": 190,
+          "cached": 0,
+          "output": 170,
+          "reasoning": 0,
+          "ms": 3416,
+          "calls": 1
+        },
+        "cost": 0.00104
+      }
+    }
+  ]
+}
