@@ -14,6 +14,8 @@ export type Candidate = {
   conditions: string[];
   kind: string | null;
   allowExternalAi: boolean;
+  /** 작업 맥락의 키워드 중 이 메모에 나타난 개수 */
+  hits: number;
   score: number;
 };
 
@@ -60,6 +62,7 @@ export async function findCandidates(teamId: string, query: string, opts: Search
     conditions: row.restated?.conditions ?? [],
     kind: row.kind,
     allowExternalAi: row.allow_external_ai,
+    hits: Number(row.hits),
     score: tokens.length ? row.hits / tokens.length : 0,
   }));
 }

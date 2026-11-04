@@ -24,6 +24,8 @@ import { clip, optionalText, uuid } from "./validate.ts";
 const MAX_CANDIDATES = 20;
 /** AI 모드에서 판정 단계에 넘길 최대 후보 수. 공유 메모가 이 개수 이하인 팀이면 키워드가 안 겹쳐도 전부 판정 대상으로 */
 const SMALL_TEAM_ALL = 40;
+/** AI 모드에서 AI 미허용 메모를 키워드만으로 붙일 때 필요한 최소 키워드 일치 수 (1개는 '심사위원' 같은 흔한 단어로 자주 붙는다) */
+const KEYWORD_ONLY_MIN_HITS = 2;
 /** 처리 중 상태가 이보다 오래되면 중단된 것으로 본다 */
 const STALE_MS = 5 * 60 * 1000;
 
@@ -144,11 +146,12 @@ async function runPipeline(
   }
 
   // AI 모드: 외부 처리를 허용한 메모만 모델에 보낸다.
-  // 허용하지 않은 메모는 키워드가 겹칠 때만, 모델을 거치지 않고 "팀 메모에 있는 내용" 으로만 보여준다 (원안 §7.1-2).
+  // 허용하지 않은 메모는 키워드가 충분히 겹칠 때만(관련성 판정을 거치지 않으므로 기준을 높임),
+  // 모델을 거치지 않고 "팀 메모에 있는 내용" 으로만 보여준다 (원안 §7.1-2).
   const [forModel, localOnly] = await Promise.all([
     findCandidates(task.team_id!, query, { requireExternalAi: true, limit: SMALL_TEAM_ALL, includeAllIfAtMost: SMALL_TEAM_ALL }),
     findCandidates(task.team_id!, query, { requireExternalAi: false, limit: MAX_CANDIDATES }).then((cs) =>
-      cs.filter((c) => !c.allowExternalAi),
+      cs.filter((c) => !c.allowExternalAi && c.hits >= KEYWORD_ONLY_MIN_HITS),
     ),
   ]);
   if (!forModel.length && !localOnly.length) return { items: [], dropped: 0, emptyReason: "no_related_notes", inputIds: [] };
