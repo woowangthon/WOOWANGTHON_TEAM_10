@@ -113,3 +113,12 @@ details.meeting summary::-webkit-details-marker { display: none; }
 details.meeting summary::before { content: "▸ "; color: var(--muted); }
 details.meeting[open] summary::before { content: "▾ "; }
 details.meeting pre.raw { margin-top: 10px; }
+.meeting-meta { font-size: .8rem; margin: 2px 0 0 14px; font-weight: normal; }
+.manage { border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 6px; }
+ol.history { margin: 8px 0 0; padding-left: 18px; font-size: .88rem; }
+ol.history li { margin: 8px 0; }
+.diff { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+.diff-add { color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.diff-del { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); text-decoration: line-through; }
+.diff-same { color: var(--muted); }
+.diff-skip { color: var(--muted); font-style: italic; }

@@ -302,8 +302,8 @@ const VERSION_COLS = "id, version, raw_text, restated, intent_state, kind, fact_
 export async function getNote(userId: string, noteId: string) {
   const db = getPool();
   const r = await db.query(
-    `select n.id, n.team_id, n.author_id, n.share_state, n.current_version_id, n.allow_external_ai, u.display_name as author_name
-     from notes n join users u on u.id = n.author_id where n.id = $1`,
+    `select n.id, n.team_id, n.author_id, n.share_state, n.current_version_id, n.allow_external_ai, coalesce(u.display_name, '탈퇴한 사용자') as author_name
+     from notes n left join users u on u.id = n.author_id where n.id = $1`,
     [noteId],
   );
   const note = r.rows[0];
@@ -333,10 +333,10 @@ export async function listNotes(userId: string, teamId: string) {
   const db = getPool();
   await requireMembership(db, userId, teamId);
   const r = await db.query(
-    `select n.id, n.share_state, n.allow_external_ai, n.author_id = $2 as is_author, u.display_name as author_name, n.updated_at,
+    `select n.id, n.share_state, n.allow_external_ai, n.author_id = $2 as is_author, coalesce(u.display_name, '탈퇴한 사용자') as author_name, n.updated_at,
             v.id as version_id, v.content_hash, v.raw_text, v.restated, v.intent_state, v.version
      from notes n
-     join users u on u.id = n.author_id
+     left join users u on u.id = n.author_id
      join lateral (
        select * from note_versions nv
        where nv.note_id = n.id

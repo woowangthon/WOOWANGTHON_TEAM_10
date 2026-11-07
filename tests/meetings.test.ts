@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { FakeProvider } from "../src/lib/ai/fake.ts";
 import { sourceLeaks } from "../src/lib/ai/validate-output.ts";
-import { askInProject, listChat } from "../src/lib/chat.ts";
+import { askInProject, listChat, refreshStale } from "../src/lib/chat.ts";
 import { getPool } from "../src/lib/db.ts";
-import { createMeeting, listMeetings, updateMeeting } from "../src/lib/meetings.ts";
+import { deleteAccount } from "../src/lib/account.ts";
+import { compactDiff, diffLines } from "../src/lib/diff.ts";
+import { createMeeting, listMeetings, manageMeeting, meetingHistory, updateMeeting } from "../src/lib/meetings.ts";
 import { listMemos, setAiReference, shareSummary } from "../src/lib/memos.ts";
 import { deleteNote, withdrawNote } from "../src/lib/notes.ts";
 import { createTask } from "../src/lib/tasks.ts";
@@ -60,17 +62,21 @@ describe("회의록", () => {
     expect(JSON.stringify(rec.calls.chat[0])).not.toMatch(/alice|@example/);
   });
 
-  it("제목으로도 찾고, 회의 내용을 고치면 반영했던 답변은 조용히 다시 쓴다 (날짜만 바꾸면 그대로)", async () => {
+  it("제목으로도 찾고, 회의록을 고치면(날짜 포함) 반영했던 답변은 조용히 다시 쓴다", async () => {
     const s = await setup();
     const m = await createMeeting(s.alice, s.teamId, { title: "데모 방식 회의", date: "2026-11-05", text: "녹화 영상으로 하기로 함" });
     const t = await askInProject(s.bob, s.projectId, { question: "데모 방식?" }, usesMeetings());
-    await updateMeeting(s.alice, m.noteId, { title: "데모 방식 회의", date: "2026-11-06", text: "녹화 영상으로 하기로 함" });
+    await updateMeeting(s.alice, m.noteId, { title: "데모 방식 회의", date: "2026-11-05", text: "녹화 영상으로 하기로 함" }); // 바뀐 것 없음
     expect((await listChat(s.bob, s.projectId))[0]).toMatchObject({ id: t.id, stale: false });
+    await updateMeeting(s.alice, m.noteId, { title: "데모 방식 회의", date: "2026-11-06", text: "녹화 영상으로 하기로 함" });
+    expect((await listChat(s.bob, s.projectId))[0]).toMatchObject({ id: t.id, stale: true });
+    await refreshStale(s.bob, s.projectId, usesMeetings());
     await updateMeeting(s.alice, m.noteId, { title: "데모 방식 회의", date: "2026-11-06", text: "실시간 데모로 바꿈" });
     expect((await listChat(s.bob, s.projectId))[0]).toMatchObject({ id: t.id, stale: true });
     expect((await listMeetings(s.bob, s.teamId))[0]).toMatchObject({ text: "실시간 데모로 바꿈", date: "2026-11-06" });
-    // 쓴 사람만 고칠 수 있다
-    await expect(updateMeeting(s.bob, m.noteId, { title: "x", date: "2026-11-06", text: "y" })).rejects.toMatchObject({ status: 404 });
+    // 다른 팀 사람은 고칠 수 없다
+    const other = await makeUser("carol");
+    await expect(updateMeeting(other, m.noteId, { title: "x", date: "2026-11-06", text: "y" })).rejects.toMatchObject({ status: 404 });
   });
 
   it("철회·AI 참고 끄기·삭제는 메모와 같은 규칙을 따른다", async () => {
@@ -100,5 +106,89 @@ describe("회의록", () => {
     expect(sourceLeaks("지난 회의 내용을 보면 그래요.")).not.toEqual([]);
     expect(sourceLeaks("데모는 녹화 영상으로 준비하세요.")).toEqual([]);
     expect(sourceLeaks("지난 회의에서 정한 것은 두 가지예요.", "지난 회의에서 뭐 정했지?")).toEqual([]);
+  });
+
+  it("팀원 누구나 고칠 수 있고, 수정 기록에 누가 무엇을 고쳤는지 남는다", async () => {
+    const s = await setup();
+    const m = await createMeeting(s.alice, s.teamId, { title: "발표 회의", date: "2026-11-05", text: "발표자: 지민\n데모: 실시간" });
+    const v1 = (await listMeetings(s.bob, s.teamId))[0]!;
+    await updateMeeting(s.bob, m.noteId, { title: "발표 회의", date: "2026-11-05", text: "발표자: 지민\n데모: 녹화", baseVersionId: v1.versionId });
+    const v2 = (await listMeetings(s.alice, s.teamId))[0]!;
+    await updateMeeting(s.alice, m.noteId, { title: "발표 구성 회의", date: "2026-11-06", text: "발표자: 지민\n데모: 녹화", baseVersionId: v2.versionId });
+    const now = (await listMeetings(s.bob, s.teamId))[0]!;
+    expect(now).toMatchObject({ title: "발표 구성 회의", date: "2026-11-06", version: 3, authorName: "alice", lastEditedBy: "alice", canManage: false });
+    const h = await meetingHistory(s.bob, m.noteId);
+    expect(h.map((v) => [v.version, v.editorName, v.title, v.date])).toEqual([
+      [3, "alice", "발표 구성 회의", "2026-11-06"],
+      [2, "bob", "발표 회의", "2026-11-05"],
+      [1, "alice", "발표 회의", "2026-11-05"],
+    ]);
+    expect(diffLines(h[2]!.text, h[1]!.text)).toEqual([
+      { op: "same", text: "발표자: 지민" }, { op: "del", text: "데모: 실시간" }, { op: "add", text: "데모: 녹화" },
+    ]);
+    // 아무것도 안 바꾸면 버전을 늘리지 않는다
+    const r = await updateMeeting(s.bob, m.noteId, { title: "발표 구성 회의", date: "2026-11-06", text: "발표자: 지민\n데모: 녹화" });
+    expect(r.changed).toBe(false);
+  });
+
+  it("동시에 고치면 나중에 저장한 쪽은 앞사람의 수정을 덮어쓰지 못한다", async () => {
+    const s = await setup();
+    const m = await createMeeting(s.alice, s.teamId, { title: "회의", date: "2026-11-05", text: "처음" });
+    const base = (await listMeetings(s.alice, s.teamId))[0]!.versionId;
+    await updateMeeting(s.alice, m.noteId, { title: "회의", date: "2026-11-05", text: "alice 가 고침", baseVersionId: base });
+    await expect(updateMeeting(s.bob, m.noteId, { title: "회의", date: "2026-11-05", text: "bob 이 고침", baseVersionId: base }))
+      .rejects.toMatchObject({ status: 409 });
+    expect((await listMeetings(s.bob, s.teamId))[0]!.text).toBe("alice 가 고침");
+  });
+
+  it("철회·삭제·AI 참고 끄기는 처음 쓴 사람이나 팀장만", async () => {
+    const s = await setup();
+    const carol = await makeUser("carol");
+    const team = await getPool().query("select invite_code from teams where id = $1", [s.teamId]);
+    await joinTeam(carol, team.rows[0].invite_code);
+    const m = await createMeeting(s.bob, s.teamId, { title: "bob 의 회의록", date: "2026-11-05", text: "내용" });
+    await expect(manageMeeting(carol, m.noteId, { action: "withdraw" })).rejects.toMatchObject({ status: 403 });
+    await expect(manageMeeting(carol, m.noteId, { action: "delete" })).rejects.toMatchObject({ status: 403 });
+    await manageMeeting(s.alice, m.noteId, { action: "ai", allowExternalAi: false }); // alice 는 팀장
+    await manageMeeting(s.bob, m.noteId, { action: "withdraw" });
+    expect(await listMeetings(carol, s.teamId)).toEqual([]);
+    expect((await listMeetings(s.alice, s.teamId))[0]).toMatchObject({ state: "withdrawn", allowExternalAi: false });
+    await manageMeeting(s.bob, m.noteId, { action: "share" });
+    expect(await listMeetings(carol, s.teamId)).toHaveLength(1);
+    await manageMeeting(s.alice, m.noteId, { action: "delete" });
+    expect(await listMeetings(s.bob, s.teamId)).toEqual([]);
+  });
+
+  it("회원 탈퇴: 공유된 회의록은 남고(작성자·고친 사람은 '탈퇴한 사용자'), 철회해 둔 회의록과 다른 정보는 지운다", async () => {
+    const s = await setup();
+    const kept = await createMeeting(s.bob, s.teamId, { title: "남길 회의록", date: "2026-11-05", text: "데모는 녹화" });
+    const v = (await listMeetings(s.bob, s.teamId))[0]!.versionId;
+    await updateMeeting(s.bob, kept.noteId, { title: "남길 회의록", date: "2026-11-05", text: "데모는 녹화 영상", baseVersionId: v });
+    const gone = await createMeeting(s.bob, s.teamId, { title: "철회한 회의록", date: "2026-11-04", text: "비공개" });
+    await manageMeeting(s.bob, gone.noteId, { action: "withdraw" });
+    await shareSummary(s.bob, s.teamId, { text: "bob 의 공유 메모" });
+
+    await deleteAccount(s.bob, { password: "correct-horse-battery" });
+
+    const list = await listMeetings(s.alice, s.teamId);
+    expect(list).toEqual([expect.objectContaining({ title: "남길 회의록", text: "데모는 녹화 영상", authorName: "탈퇴한 사용자", lastEditedBy: "탈퇴한 사용자", canManage: true })]);
+    expect((await meetingHistory(s.alice, kept.noteId)).map((h) => h.editorName)).toEqual(["탈퇴한 사용자", "탈퇴한 사용자"]);
+    expect(await getPool().query("select 1 from notes where id = $1", [gone.noteId]).then((r) => r.rowCount)).toBe(0);
+    expect((await listMemos(s.alice, s.teamId)).shared).toEqual([]);
+    expect(await getPool().query("select 1 from users where id = $1", [s.bob]).then((r) => r.rowCount)).toBe(0);
+    // AI 도 계속 참고한다
+    const rec = recording(new FakeProvider({ chat: () => ({ answer: "네", used_refs: [] }) }));
+    await askInProject(s.alice, s.projectId, { question: "데모?" }, rec.provider);
+    expect(rec.calls.chat[0]!.knowledge.map((k) => k.text)).toContain("데모는 녹화 영상");
+    // 남은 팀장은 고치거나 지울 수 있다
+    await updateMeeting(s.alice, kept.noteId, { title: "남길 회의록", date: "2026-11-05", text: "데모는 녹화 영상 (확정)" });
+  });
+
+  it("줄 비교: 같은 줄이 길게 이어지면 접는다", () => {
+    const before = ["a", "b", "c", "d", "e", "f"].join("\n");
+    const after = ["a", "b", "c", "d", "e", "F"].join("\n");
+    expect(compactDiff(diffLines(before, after))).toEqual([
+      { op: "skip", count: 4 }, { op: "same", text: "e" }, { op: "del", text: "f" }, { op: "add", text: "F" },
+    ]);
   });
 });

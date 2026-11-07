@@ -86,7 +86,7 @@ async function main() {
   const A = new Client("A"), B = new Client("B"), C = new Client("C");
   const pw = `Smoke-${TAG}-pass-word`;
   let teamId = "", inviteCode = "", note1 = { id: "", versionId: "", hash: "" }, note2 = { id: "", versionId: "", hash: "" };
-  let taskId = "", adviceId = "", firstItemId = "", chatId = "", sharedNoteId = "";
+  let taskId = "", adviceId = "", firstItemId = "", chatId = "", sharedNoteId = "", meetingId = "";
   let ai = { provider: "none", available: false, model: null as string | null };
 
   await step("상태 점검 /api/health", async () => {
@@ -251,7 +251,16 @@ async function main() {
     expect(r.data.status === "ok" && r.data.answer, `답변 상태 ${r.data.status}`);
     expect(/녹화/.test(r.data.answer), "회의에서 정한 내용(녹화)이 답변에 반영되지 않음");
     expect(!/회의록|회의에서 정/.test(r.data.answer), "답변이 회의를 출처로 드러냄");
-    return `${r.ms}ms`;
+    meetingId = m.data.noteId;
+    // 팀원 누구나 고칠 수 있고, 수정 기록에 고친 사람이 남는다
+    const cur = (list.data as Json[]).find((x) => x.id === meetingId)!;
+    const ed = await B.call("PATCH", `/api/meetings/${meetingId}`, { title: cur.title, date: cur.date, text: `${cur.text}\n- 영상 길이는 3분 이내`, baseVersionId: cur.versionId });
+    expect(ed.status === 200, `팀원이 회의록을 고치지 못함 HTTP ${ed.status} ${ed.data.message ?? ""}`);
+    const stale = await A.call("PATCH", `/api/meetings/${meetingId}`, { title: cur.title, date: cur.date, text: "덮어쓰기", baseVersionId: cur.versionId });
+    expect(stale.status === 409, `동시 수정이 앞사람의 수정을 덮어씀 (HTTP ${stale.status})`);
+    const h = await A.call("GET", `/api/meetings/${meetingId}/history`);
+    expect(Array.isArray(h.data) && h.data[0]?.editorName === "점검B" && h.data[1]?.editorName === "점검A", "수정 기록에 고친 사람이 남지 않음");
+    return `${r.ms}ms · 팀원 수정·기록 확인`;
   });
 
   await softStep("공유 철회 → 대화 답변은 사유 표시 없이 다시 쓰임", async () => {
@@ -318,6 +327,15 @@ async function main() {
       const team = await B.call("GET", `/api/teams/${teamId}`);
       expect(team.status === 200, `남은 팀원이 팀을 못 봄 HTTP ${team.status}`);
       return `메모 ${r.data.notesDeleted}개 삭제, 팀장 승계`;
+    });
+  }
+
+  if (!keep && meetingId) {
+    await softStep("탈퇴해도 공유된 회의록은 팀에 남음", async () => {
+      const list = await B.call("GET", `/api/teams/${teamId}/meetings`);
+      const m = (list.data as Json[]).find((x) => x.id === meetingId);
+      expect(m, "탈퇴한 사람이 쓴 회의록이 사라짐");
+      expect(m!.authorName === "탈퇴한 사용자", `작성자 표시가 ${m!.authorName}`);
     });
   }
 
