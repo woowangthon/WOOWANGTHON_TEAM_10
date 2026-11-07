@@ -45,6 +45,7 @@ function Login({ onDone }: { onDone: () => void }) {
         <p><input aria-label="비밀번호" type="password" placeholder="비밀번호 (10자 이상)" value={form.password} minLength={10} required
           autoComplete={mode === "login" ? "current-password" : "new-password"}
           onChange={(e) => setForm({ ...form, password: e.target.value })} /></p>
+        {mode === "signup" && <PrivacyNotice />}
         {error && <p className="error" role="alert">{error}</p>}
         <div className="row">
           <button className="primary" type="submit" disabled={busy}>{mode === "login" ? "로그인" : "가입"}</button>
@@ -54,6 +55,59 @@ function Login({ onDone }: { onDone: () => void }) {
         </div>
       </form>
     </>
+  );
+}
+
+/** 가입 전에 보여주는 수집·처리 안내. 내용은 docs/보안_점검.md 「개인정보 처리」와 맞춘다. */
+function PrivacyNotice() {
+  return (
+    <details className="notice">
+      <summary>가입하면 무엇이 저장되나요?</summary>
+      <ul>
+        <li><b>수집</b>: 이메일(로그인용), 이름(팀원에게 표시), 비밀번호. 비밀번호는 원문을 저장하지 않고 되돌릴 수 없는 해시로만 저장합니다.</li>
+        <li><b>저장 위치</b>: 서비스 데이터베이스(Neon PostgreSQL)와 서버(Vercel). 로그인 상태는 브라우저 쿠키로 7일간 유지됩니다.</li>
+        <li><b>AI 처리</b>: &lsquo;AI 정리 허용&rsquo;을 켠 메모의 본문과 작업 내용만 OpenAI에 보냅니다. 이름·이메일은 보내지 않으며, OpenAI 쪽 대화 저장은 끈 상태로 요청합니다.</li>
+        <li><b>삭제</b>: 메모는 언제든 삭제할 수 있고, 로그인 후 첫 화면의 &lsquo;회원 탈퇴&rsquo;로 계정과 내가 쓴 메모를 모두 지울 수 있습니다.</li>
+      </ul>
+    </details>
+  );
+}
+
+function DeleteAccount() {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!confirm("정말 탈퇴할까요? 되돌릴 수 없습니다.")) return;
+    setError(""); setBusy(true);
+    try {
+      await api("/api/auth/me", { method: "DELETE", body: { password } });
+      alert("탈퇴했습니다. 계정과 작성한 메모를 모두 지웠습니다.");
+      location.reload();
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  };
+  if (!open) return <p><button className="small" onClick={() => setOpen(true)}>회원 탈퇴</button></p>;
+  return (
+    <form className="card" onSubmit={submit}>
+      <p><b>회원 탈퇴</b></p>
+      <ul className="muted">
+        <li>지워지는 것: 이메일·이름·비밀번호, 내가 쓴 메모 전부(모든 팀), 그 메모를 근거로 쓴 조언 내용, 내 조언 요청과 반응</li>
+        <li>팀은 남은 팀원이 계속 씁니다. 내가 유일한 팀장이면 가장 오래된 팀원이 팀장이 되고, 남은 팀원이 없으면 팀 전체를 지웁니다</li>
+        <li>내가 만든 작업은 팀에 남고 만든 사람 표시만 지워집니다</li>
+      </ul>
+      <p><input aria-label="비밀번호 확인" type="password" placeholder="비밀번호 확인" autoComplete="current-password"
+        value={password} required onChange={(e) => setPassword(e.target.value)} /></p>
+      {error && <p className="error" role="alert">{error}</p>}
+      <div className="row">
+        <button className="danger" type="submit" disabled={busy || !password}>탈퇴하고 모두 지우기</button>
+        <button type="button" onClick={() => { setOpen(false); setPassword(""); setError(""); }}>취소</button>
+      </div>
+    </form>
   );
 }
 
@@ -104,6 +158,9 @@ function Teams({ me }: { me: Me }) {
         <button disabled={!code.trim()} onClick={() => act(() => api("/api/teams/join", { body: { inviteCode: code.trim() } }).then(() => setCode("")))}>가입</button>
       </div>
       {error && <p className="error" role="alert">{error}</p>}
+      <h2>계정</h2>
+      <p className="muted">{me.email}</p>
+      <DeleteAccount />
     </>
   );
 }

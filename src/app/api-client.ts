@@ -4,7 +4,7 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   const res = await fetch(path, {
     method,
     headers: method === "GET" ? {} : { "Content-Type": "application/json" },
-    body: method === "GET" || method === "DELETE" ? undefined : JSON.stringify(opts.body ?? {}),
+    body: method === "GET" || (method === "DELETE" && opts.body === undefined) ? undefined : JSON.stringify(opts.body ?? {}),
     credentials: "same-origin",
   });
   const data = await res.json().catch(() => ({}));
