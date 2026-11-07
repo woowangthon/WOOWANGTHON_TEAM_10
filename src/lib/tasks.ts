@@ -1,3 +1,5 @@
+// 프로젝트 (DB 표 이름은 tasks). 팀이 함께 만드는 것 하나: 이름·목표·누구를 위한 것인지·마감과 조건.
+// 대화(chat.ts)는 프로젝트 안에서 이 정보를 맥락으로 삼는다.
 import { requireMembership } from "./access.ts";
 import { audit, getPool, withTx } from "./db.ts";
 import { notFound } from "./errors.ts";
@@ -14,10 +16,10 @@ export async function createTask(userId: string, teamId: string, input: TaskInpu
     [
       teamId,
       userId,
-      text(input.title, "작업 제목", { min: 1, max: 200 }),
-      optionalText(input.purpose, "목적", 1000),
-      optionalText(input.audience, "대상", 500),
-      optionalText(input.constraints, "제약", 1000),
+      text(input.title, "프로젝트 이름", { min: 1, max: 200 }),
+      optionalText(input.purpose, "목표", 1000),
+      optionalText(input.audience, "누구를 위한 것인지", 500),
+      optionalText(input.constraints, "마감·조건", 1000),
     ],
   );
   await audit(db, userId, "task.create", r.rows[0].id);
@@ -53,10 +55,10 @@ export async function updateTask(userId: string, taskId: string, input: TaskInpu
        where id = $1 returning id, title, purpose, audience, constraints, version`,
       [
         taskId,
-        text(input.title, "작업 제목", { min: 1, max: 200 }),
-        optionalText(input.purpose, "목적", 1000),
-        optionalText(input.audience, "대상", 500),
-        optionalText(input.constraints, "제약", 1000),
+        text(input.title, "프로젝트 이름", { min: 1, max: 200 }),
+        optionalText(input.purpose, "목표", 1000),
+        optionalText(input.audience, "누구를 위한 것인지", 500),
+        optionalText(input.constraints, "마감·조건", 1000),
       ],
     );
     await audit(tx, userId, "task.update", taskId);

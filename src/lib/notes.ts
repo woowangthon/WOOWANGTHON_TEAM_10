@@ -89,6 +89,18 @@ async function latestVersion(tx: Db, noteId: string) {
 const NOTE_VERSION_IDS = "(select coalesce(array_agg(id), '{}') from note_versions where note_id = $1)";
 
 /**
+ * 이 메모의 영향을 받은 조언 요청.
+ *  - 조언(kind='advice'): 모델·화면에 넘긴 메모 전체(input_version_ids) 기준. 모델은 받은 메모 전체의 영향을 받을 수 있다.
+ *  - 대화(kind='chat'): 모델이 답변에 반영했다고 밝힌 메모(evidence_version_ids) 기준. 작은 팀은 공유 메모를 매번 전부 건네므로,
+ *    입력 기준으로 하면 메모 하나를 철회할 때마다 모든 대화가 사라진다. 대신 처리 중인 요청은 확정 직전에 반영 메모를 다시 확인한다.
+ */
+const AFFECTED_BY_NOTE = `(
+  (advice_requests.kind = 'advice' and advice_requests.input_version_ids && ${NOTE_VERSION_IDS})
+  or (advice_requests.kind = 'chat' and exists (
+        select 1 from advice_items ai where ai.request_id = advice_requests.id and ai.evidence_version_ids && ${NOTE_VERSION_IDS}))
+)`;
+
+/**
  * 이 메모(어느 버전이든)를 모델·화면에 넘겼던 조언 요청을 무효화한다.
  * 모델은 받은 메모 전체의 영향을 받을 수 있으므로, 근거로 인용하지 않은 항목까지 요청 단위로 무효화한다.
  */
@@ -96,7 +108,7 @@ export async function invalidateAdviceForNote(tx: Db, noteId: string): Promise<n
   const r = await tx.query(
     `update advice_requests
      set status = 'invalidated', error = coalesce(error, 'source_changed'), finished_at = coalesce(finished_at, now())
-     where status in ('pending', 'ok') and input_version_ids && ${NOTE_VERSION_IDS}`,
+     where status in ('pending', 'ok') and ${AFFECTED_BY_NOTE}`,
     [noteId],
   );
   return r.rowCount ?? 0;
@@ -106,7 +118,7 @@ export async function invalidateAdviceForNote(tx: Db, noteId: string): Promise<n
 export async function purgeAdviceForNote(tx: Db, noteId: string): Promise<number> {
   const r = await tx.query(
     `update advice_items set body = '', quotes = '[]'::jsonb, purged = true
-     where request_id in (select id from advice_requests where input_version_ids && ${NOTE_VERSION_IDS})`,
+     where request_id in (select id from advice_requests where ${AFFECTED_BY_NOTE})`,
     [noteId],
   );
   return r.rowCount ?? 0;

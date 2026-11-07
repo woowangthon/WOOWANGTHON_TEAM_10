@@ -1,4 +1,4 @@
-// 배포 점검 (smoke test): 배포된 주소에서 가입 → 팀 → 메모 → (AI 정리) → 공유 → 조언 → 반응 → 철회 → 숨김 → 타 팀 차단까지
+// 배포 점검 (smoke test): 배포된 주소에서 가입 → 팀 → 메모 → (AI 정리) → 공유 → 조언 → 반응 → 메모하기·정리 공유 → 프로젝트 대화 → 철회 → 숨김 → 타 팀 차단 → 탈퇴까지
 // 실제 HTTP 요청으로 한 바퀴 돌리고 통과/실패를 보여준다. 브라우저·DB 접근이 필요 없다.
 //
 //   npm run smoke -- --url=https://<프로젝트>.vercel.app
@@ -86,7 +86,7 @@ async function main() {
   const A = new Client("A"), B = new Client("B"), C = new Client("C");
   const pw = `Smoke-${TAG}-pass-word`;
   let teamId = "", inviteCode = "", note1 = { id: "", versionId: "", hash: "" }, note2 = { id: "", versionId: "", hash: "" };
-  let taskId = "", adviceId = "", firstItemId = "";
+  let taskId = "", adviceId = "", firstItemId = "", chatId = "";
   let ai = { provider: "none", available: false, model: null as string | null };
 
   await step("상태 점검 /api/health", async () => {
@@ -200,6 +200,43 @@ async function main() {
     expect(r.status === 200, `HTTP ${r.status} ${r.data.message ?? ""}`);
   });
 
+  await step("A 메모하기 → (AI 정리) → 확인 후 팀에 공유", async () => {
+    const m1 = await A.call("POST", `/api/teams/${teamId}/memos`, { text: "발표 그래프는 1차·2차 온도(22도, 26도)를 범례에 꼭 적기" });
+    const m2 = await A.call("POST", `/api/teams/${teamId}/memos`, { text: "표본 12개라 막대에 오차 범위 표시" });
+    expect(m1.status === 200 && m2.status === 200, `메모 저장 실패 HTTP ${m1.status}/${m2.status}`);
+    const others = await B.call("GET", `/api/teams/${teamId}/memos`);
+    expect(!JSON.stringify(others.data.mine ?? []).includes("범례"), "공유 전 메모가 다른 팀원에게 보임");
+    let text = "- 그래프 범례에 1차 22도, 2차 26도 표기\n- 표본 12개라 오차 범위 표시";
+    let note = "AI 미연결: 직접 정리";
+    if (ai.available) {
+      const s = await A.call("POST", `/api/teams/${teamId}/memos/summarize`, { noteIds: [m1.data.noteId, m2.data.noteId] });
+      expect(s.status === 200 && typeof s.data.text === "string" && s.data.text, `AI 정리 실패 HTTP ${s.status} ${s.data.message ?? ""}`);
+      text = s.data.text;
+      note = `AI 정리 ${s.ms}ms${s.data.warnings?.length ? `, 경고 ${s.data.warnings.length}` : ""}`;
+    }
+    const sh = await A.call("POST", `/api/teams/${teamId}/shared`, { text, sourceNoteIds: [m1.data.noteId, m2.data.noteId] });
+    expect(sh.status === 200, `공유 실패 HTTP ${sh.status} ${sh.data.message ?? ""}`);
+    const seen = await B.call("GET", `/api/teams/${teamId}/memos`);
+    expect((seen.data.shared ?? []).some((x: Json) => x.text === text), "공유한 정리가 다른 팀원에게 보이지 않음");
+    return note;
+  });
+
+  await step("B 프로젝트 대화 (항상 답함, 메모 출처 비노출)", async () => {
+    if (!ai.available) return "AI 미연결: 건너뜀";
+    const r = await B.call("POST", `/api/tasks/${taskId}/chat`, { question: "실험 그래프 범례에는 무엇을 적어야 할까?", clientRequestId: crypto.randomUUID() });
+    expect(r.status === 200, `대화 실패 HTTP ${r.status} ${r.data.message ?? ""}`);
+    expect(r.data.status === "ok" && r.data.answer, `답변 상태 ${r.data.status} (${r.data.error ?? ""})`);
+    expect(!/\bN\d+\b/.test(r.data.answer), "답변에 내부 번호(N1 등)가 보임");
+    chatId = r.data.id;
+    const empty = await B.call("POST", `/api/tasks/${taskId}/chat`, { question: "점심 메뉴 추천해 줘", clientRequestId: crypto.randomUUID() });
+    expect(empty.data.status === "ok" && empty.data.answer, "관련 팀 지식이 없는 질문에 답하지 않음");
+    const list = await B.call("GET", `/api/tasks/${taskId}/chat`);
+    expect(Array.isArray(list.data) && list.data.length === 2, `대화 기록 ${list.data?.length}건 (2건이어야 함)`);
+    const peek = await A.call("GET", `/api/tasks/${taskId}/chat`);
+    expect(Array.isArray(peek.data) && peek.data.length === 0, "다른 팀원의 대화가 보임");
+    return `${r.ms}ms · 답변 ${r.data.answer.length}자 · 무관 질문 ${empty.ms}ms`;
+  });
+
   await step("A 철회 → B 조언에서 숨김", async () => {
     const w = await A.call("POST", `/api/notes/${note1.id}/withdraw`, {});
     expect(w.status === 200, `철회 실패 HTTP ${w.status}`);
@@ -218,6 +255,12 @@ async function main() {
     expect(l.status === 404, `다른 팀 목록이 ${l.status} 로 응답`);
     const a = await C.call("GET", `/api/advice/${adviceId}`);
     expect(a.status === 404, `다른 사람 조언이 ${a.status} 로 응답`);
+    if (chatId) {
+      const c = await C.call("GET", `/api/tasks/${taskId}/chat`);
+      expect(c.status === 404, `다른 팀 대화가 ${c.status} 로 응답`);
+      const m = await C.call("GET", `/api/teams/${teamId}/memos`);
+      expect(m.status === 404, `다른 팀 메모 보기가 ${m.status} 로 응답`);
+    }
     const x = await fetch(`${BASE}/api/teams`, { method: "POST", headers: { "Content-Type": "application/json", Origin: "https://evil.example" }, body: "{}" });
     expect(x.status === 403 || x.status === 401, `외부 출처 요청이 ${x.status} 로 응답 (403 여야 함)`);
   });

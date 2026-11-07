@@ -39,7 +39,7 @@ class AiCallError extends Error {
   }
 }
 
-async function callAi<T>(fn: () => Promise<T>): Promise<T> {
+export async function callAi<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await withTimeout(fn(), aiTimeoutMs());
   } catch (err) {
@@ -48,7 +48,7 @@ async function callAi<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-function errorCode(err: unknown): string {
+export function errorCode(err: unknown): string {
   if (err instanceof AiTimeout) return "ai_timeout";
   if (err instanceof InvalidAiOutput) return "invalid_ai_output";
   if (err instanceof AiCallError) return "ai_error";
@@ -75,7 +75,7 @@ function contextHints(c: TaskContext): string[] {
   return hints;
 }
 
-type PipelineResult = {
+export type PipelineResult = {
   items: ValidItem[];
   dropped: number;
   emptyReason: string | null;
@@ -96,7 +96,7 @@ function keywordItems(cands: Candidate[]): ValidItem[] {
 }
 
 /** 모델·화면에 넘길 메모를 먼저 기록하고, 기록 직후 다시 확인해 그 사이 철회된 메모는 뺀다. */
-async function recordInputs(requestId: string, teamId: string, cands: Candidate[]): Promise<Candidate[]> {
+export async function recordInputs(requestId: string, teamId: string, cands: Candidate[]): Promise<Candidate[]> {
   const db = getPool();
   const ids = cands.map((c) => c.versionId);
   await db.query("update advice_requests set input_version_ids = $2, candidate_count = $3 where id = $1", [
@@ -213,7 +213,7 @@ async function invalidateRequest(tx: Db, requestId: string, reason: string) {
  * 확정: 저장 직전에 근거 메모·작업·요청자 상태를 다시 확인한다 (원안 §7.2-10).
  * 잠금 순서는 메모 → 작업 → 조언 요청. 철회·수정(메모 → 조언 요청)과 같은 순서라 교착이 생기지 않는다.
  */
-async function finalize(
+export async function finalize(
   requestId: string,
   userId: string,
   teamId: string,
@@ -319,7 +319,7 @@ export async function requestAdvice(
 }
 
 /** 모델 사용량(토큰·시간)을 요청에 기록한다. 비용 계산과 운영 점검용 (원안 §8.3). */
-async function recordUsage(requestId: string, provider: AiProvider) {
+export async function recordUsage(requestId: string, provider: AiProvider) {
   const usage = provider.drainUsage?.() ?? [];
   if (!usage.length) return;
   const sum = usage.reduce(
@@ -347,7 +347,7 @@ type EvidenceView =
     };
 
 /** 너무 오래 '처리 중' 인 요청(서버가 중간에 멈춘 경우)을 실패로 정리한다. */
-async function markStale(db: Db, where: string, params: unknown[]) {
+export async function markStale(db: Db, where: string, params: unknown[]) {
   await db.query(
     `update advice_requests set status = 'failed', error = 'stale', finished_at = now()
      where status = 'pending' and created_at < now() - ($${params.length + 1} || ' milliseconds')::interval and ${where}`,

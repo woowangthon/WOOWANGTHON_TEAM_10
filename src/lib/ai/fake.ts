@@ -4,7 +4,7 @@
 //  - 테스트에서는 overrides 로 악의적·잘못된 출력을 흉내 내 서버 검증을 시험한다.
 import { keywordTokens } from "../keywords.ts";
 import { clip } from "../validate.ts";
-import type { AdviseInput, AiProvider, JudgeInput, RestateInput } from "./types.ts";
+import type { AdviseInput, AiProvider, ChatInput, JudgeInput, RestateInput, SummarizeInput } from "./types.ts";
 
 export const FAKE_LABEL = "【개발용 가짜 응답】";
 
@@ -12,6 +12,8 @@ type Overrides = {
   restate?: (input: RestateInput) => unknown;
   judge?: (input: JudgeInput) => unknown;
   advise?: (input: AdviseInput) => unknown;
+  chat?: (input: ChatInput) => unknown;
+  summarize?: (input: SummarizeInput) => unknown;
 };
 
 export class FakeProvider implements AiProvider {
@@ -43,6 +45,20 @@ export class FakeProvider implements AiProvider {
         why: `${FAKE_LABEL} 키워드 일치 여부로만 판단`,
       })),
     };
+  }
+
+  /** 질문과 키워드가 겹치는 지식만 "참고"한 것으로 기록하고, 답변에는 번호를 쓰지 않는다. */
+  async chat(input: ChatInput): Promise<unknown> {
+    if (this.overrides.chat) return this.overrides.chat(input);
+    const tokens = keywordTokens(input.question);
+    const used = input.knowledge.filter((k) => tokens.some((t) => k.text.toLowerCase().includes(t)));
+    const hint = used.length ? ` 참고: ${used.map((k) => clip(k.text, 40)).join(" / ")}` : "";
+    return { answer: `${FAKE_LABEL} "${clip(input.question, 40)}"에 대한 답입니다.${hint}`, used_refs: used.map((k) => k.ref) };
+  }
+
+  async summarize(input: SummarizeInput): Promise<unknown> {
+    if (this.overrides.summarize) return this.overrides.summarize(input);
+    return { text: `${FAKE_LABEL} ${input.memos.map((m) => clip(m, 60)).join(" / ")}` };
   }
 
   async advise(input: AdviseInput): Promise<unknown> {

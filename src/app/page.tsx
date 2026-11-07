@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "./api-client.ts";
+import { MemoFab } from "./memo-fab.tsx";
 
 type Me = { id: string; email: string; displayName: string };
 type Team = { id: string; name: string; role: string; member_count: number };
@@ -34,7 +35,7 @@ function Login({ onDone }: { onDone: () => void }) {
   return (
     <>
       <h1>팀 기억 조언자</h1>
-      <p className="muted">팀원이 짧게 남긴 생각을 모아 두고, 작업할 때 관련 생각을 찾아 연결해 줍니다.</p>
+      <p className="muted">AI와 대화하듯 묻고 답하세요. 팀이 메모로 쌓아 둔 생각을 AI가 함께 참고합니다.</p>
       <form className="card" onSubmit={submit}>
         {mode === "signup" && (
           <p><input aria-label="이름" placeholder="이름 (팀원에게 표시됨)" value={form.displayName} maxLength={40} required
@@ -66,8 +67,8 @@ function PrivacyNotice() {
       <ul>
         <li><b>수집</b>: 이메일(로그인용), 이름(팀원에게 표시), 비밀번호. 비밀번호는 원문을 저장하지 않고 되돌릴 수 없는 해시로만 저장합니다.</li>
         <li><b>저장 위치</b>: 서비스 데이터베이스(Neon PostgreSQL)와 서버(Vercel). 로그인 상태는 브라우저 쿠키로 7일간 유지됩니다.</li>
-        <li><b>AI 처리</b>: &lsquo;AI 정리 허용&rsquo;을 켠 메모의 본문과 작업 내용만 OpenAI에 보냅니다. 이름·이메일은 보내지 않으며, OpenAI 쪽 대화 저장은 끈 상태로 요청합니다.</li>
-        <li><b>삭제</b>: 메모는 언제든 삭제할 수 있고, 로그인 후 첫 화면의 &lsquo;회원 탈퇴&rsquo;로 계정과 내가 쓴 메모를 모두 지울 수 있습니다.</li>
+        <li><b>AI 처리</b>: OpenAI에 보내는 것은 &lsquo;AI로 정리하기&rsquo;를 누른 내 메모, 내 질문과 이어지는 대화, 프로젝트 정보, 팀에 공유된 지식(AI 참고를 허용한 것)뿐입니다. 이름·이메일은 보내지 않으며, OpenAI 쪽 대화 저장은 끈 상태로 요청합니다.</li>
+        <li><b>삭제</b>: 메모와 공유한 지식은 언제든 삭제할 수 있고, 로그인 후 첫 화면의 &lsquo;회원 탈퇴&rsquo;로 계정과 내가 쓴 메모를 모두 지울 수 있습니다.</li>
       </ul>
     </details>
   );
@@ -96,9 +97,9 @@ function DeleteAccount() {
     <form className="card" onSubmit={submit}>
       <p><b>회원 탈퇴</b></p>
       <ul className="muted">
-        <li>지워지는 것: 이메일·이름·비밀번호, 내가 쓴 메모 전부(모든 팀), 그 메모를 근거로 쓴 조언 내용, 내 조언 요청과 반응</li>
+        <li>지워지는 것: 이메일·이름·비밀번호, 내 메모와 내가 공유한 지식 전부(모든 팀), 그 지식을 반영한 AI 답변 내용, 내 대화 기록</li>
         <li>팀은 남은 팀원이 계속 씁니다. 내가 유일한 팀장이면 가장 오래된 팀원이 팀장이 되고, 남은 팀원이 없으면 팀 전체를 지웁니다</li>
-        <li>내가 만든 작업은 팀에 남고 만든 사람 표시만 지워집니다</li>
+        <li>내가 만든 프로젝트는 팀에 남고 만든 사람 표시만 지워집니다</li>
       </ul>
       <p><input aria-label="비밀번호 확인" type="password" placeholder="비밀번호 확인" autoComplete="current-password"
         value={password} required onChange={(e) => setPassword(e.target.value)} /></p>
@@ -134,7 +135,10 @@ function Teams({ me }: { me: Me }) {
     <>
       <div className="row" style={{ justifyContent: "space-between" }}>
         <h1>{me.displayName}님의 팀</h1>
-        <button onClick={() => api("/api/auth/logout", { body: {} }).then(() => location.reload())}>로그아웃</button>
+        <span className="row">
+          <MemoFab teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
+          <button className="small" onClick={() => api("/api/auth/logout", { body: {} }).then(() => location.reload())}>로그아웃</button>
+        </span>
       </div>
       {teams.length === 0 && <p className="muted">아직 팀이 없습니다. 팀을 만들거나 초대 코드로 가입하세요.</p>}
       {teams.map((t) => (

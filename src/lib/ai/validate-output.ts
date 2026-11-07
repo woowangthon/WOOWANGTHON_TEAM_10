@@ -19,7 +19,7 @@ const STANCES: readonly Stance[] = ["support", "caution", "objection", "unclear"
 
 export type SourceNote = { versionId: string; rawText: string; summary: string | null };
 export type ValidItem = {
-  section: Section;
+  section: Section | "answer";
   body: string;
   evidence: { versionId: string; quote: string | null }[];
   action: string | null;
@@ -110,4 +110,22 @@ export function proposalKey(item: Pick<ValidItem, "section" | "body" | "action" 
   const ids = [...new Set(item.evidence.map((e) => e.versionId))].sort();
   const basis = item.action ? normalizeAction(item.action) : `${item.section}:${normalizeAction(item.body)}`;
   return createHash("sha256").update(JSON.stringify([ids, basis])).digest("hex").slice(0, 40);
+}
+
+const MAX_ANSWER = 6000;
+
+/**
+ * 대화 답변 검증. 답변 본문과, 모델이 실제로 반영했다고 밝힌 지식 번호(이번 요청에서 건넨 것만)를 돌려준다.
+ * 답변에 번호(N3 등)가 새어 나오면 지운다: 화면에는 팀 메모 참고 여부를 드러내지 않는다.
+ */
+export function validateChatOutput(raw: unknown, validRefs: ReadonlySet<string>) {
+  if (!isObj(raw) || typeof raw.answer !== "string") throw new InvalidAiOutput("answer missing");
+  let answer = raw.answer;
+  for (const ref of validRefs) answer = answer.replace(new RegExp(`[\\[(（]?\\b${ref}\\b[\\])）]?`, "g"), "");
+  answer = answer.replace(/[ \t]+\n/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
+  if (!answer) throw new InvalidAiOutput("answer empty");
+  if (answer.length > MAX_ANSWER) answer = answer.slice(0, MAX_ANSWER) + "…";
+  const refs = Array.isArray(raw.used_refs) ? raw.used_refs : [];
+  const used = [...new Set(refs.filter((r): r is string => typeof r === "string" && validRefs.has(r)))];
+  return { answer, used, dropped: refs.length - used.length };
 }
