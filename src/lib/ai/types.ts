@@ -15,7 +15,14 @@ export type TaskContext = {
 
 export type RestateInput = { rawText: string };
 
-export type CandidateForAi = { ref: string; text: string; summary: string | null; conditions: string[] };
+export type CandidateForAi = {
+  ref: string;
+  text: string;
+  summary: string | null;
+  conditions: string[];
+  /** 회의 기록이면 제목·날짜를 붙인다 (대화에서 개인 생각보다, 오래된 회의보다 최근 회의를 우선하게) */
+  meeting?: { title: string; date: string } | null;
+};
 
 export type Stance = "support" | "caution" | "objection" | "unclear";
 
@@ -29,16 +36,35 @@ export type AdviseInput = {
   declined: DeclinedForAi[];
 };
 
+/** 대화의 맥락이 되는 프로젝트 */
+export type ProjectContext = { title: string; purpose: string; audience: string; constraints: string };
+
+/** 대화형 질문. knowledge 는 권한·상태 필터를 거친 팀 공유 메모(요청 한정 번호). 비어 있어도 답한다. */
+export type ChatInput = {
+  project: ProjectContext;
+  /** answer 가 null 이면 그 턴은 질문만 건넨다(답변이 지금은 쓸 수 없는 지식에 기댔을 수 있음) */
+  history: { question: string; answer: string | null }[];
+  knowledge: CandidateForAi[];
+  question: string;
+  /** 서버가 답변을 다시 쓰게 할 때 덧붙이는 지시 (출처 표현이 나왔을 때) */
+  retryNote?: string;
+};
+
+/** 작성자가 고른 자기 메모들을 하나의 정리문으로 */
+export type SummarizeInput = { memos: string[] };
+
 /**
  * 기대하는 출력 형태 (검증은 서버가 함):
  *  restate → { summary, kind: proposal|guess|question|objection, conditions[], uncertainties[], clarifying_question|null }
  *  judge   → { judgments: [{ ref, relevant: boolean, stance, why }] }
  *  advise  → { items: [{ section, body, evidence: [{ ref, quote? }], action? }] }
  *            section: direct | link_reason | ai_extension | objection | extra
+ *  chat      → { answer, used_refs[] }   (used_refs 는 화면에 보이지 않는 내부 기록)
+ *  summarize → { text }
  */
 export type AiUsage = {
   model: string;
-  call: "restate" | "judge" | "advise" | "eval";
+  call: "restate" | "judge" | "advise" | "chat" | "summarize" | "eval";
   inputTokens: number;
   cachedTokens: number;
   outputTokens: number;
@@ -53,6 +79,8 @@ export interface AiProvider {
   restate(input: RestateInput): Promise<unknown>;
   judge(input: JudgeInput): Promise<unknown>;
   advise(input: AdviseInput): Promise<unknown>;
+  chat(input: ChatInput): Promise<unknown>;
+  summarize(input: SummarizeInput): Promise<unknown>;
   /** 마지막으로 가져간 이후의 사용량(토큰·시간). 비용 기록용. 없으면 빈 배열. */
   drainUsage?(): AiUsage[];
 }

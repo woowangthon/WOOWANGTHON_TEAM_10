@@ -19,7 +19,7 @@ const STANCES: readonly Stance[] = ["support", "caution", "objection", "unclear"
 
 export type SourceNote = { versionId: string; rawText: string; summary: string | null };
 export type ValidItem = {
-  section: Section;
+  section: Section | "answer";
   body: string;
   evidence: { versionId: string; quote: string | null }[];
   action: string | null;
@@ -110,4 +110,64 @@ export function proposalKey(item: Pick<ValidItem, "section" | "body" | "action" 
   const ids = [...new Set(item.evidence.map((e) => e.versionId))].sort();
   const basis = item.action ? normalizeAction(item.action) : `${item.section}:${normalizeAction(item.body)}`;
   return createHash("sha256").update(JSON.stringify([ids, basis])).digest("hex").slice(0, 40);
+}
+
+const MAX_ANSWER = 6000;
+
+/**
+ * 대화 답변 검증. 답변 본문과, 모델이 실제로 반영했다고 밝힌 지식 번호(이번 요청에서 건넨 것만)를 돌려준다.
+ * 답변에 번호(N3 등)가 새어 나오면 지운다: 화면에는 팀 메모 참고 여부를 드러내지 않는다.
+ */
+export function validateChatOutput(raw: unknown, validRefs: ReadonlySet<string>) {
+  if (!isObj(raw) || typeof raw.answer !== "string") throw new InvalidAiOutput("answer missing");
+  let answer = raw.answer;
+  for (const ref of validRefs) answer = answer.replace(new RegExp(`[\\[(（]?\\b${ref}\\b[\\])）]?`, "g"), "");
+  answer = answer.replace(/[ \t]+\n/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
+  if (!answer) throw new InvalidAiOutput("answer empty");
+  if (answer.length > MAX_ANSWER) answer = answer.slice(0, MAX_ANSWER) + "…";
+  const refs = Array.isArray(raw.used_refs) ? raw.used_refs : [];
+  const used = [...new Set(refs.filter((r): r is string => typeof r === "string" && validRefs.has(r)))];
+  return { answer, used, dropped: refs.length - used.length };
+}
+
+// ---------- 출처 표현 검사 ----------
+// 답변에서 "팀 메모를 참고했다"는 신호가 되는 표현. 질문 자체에 그 낱말이 있으면(예: "메모 앱 추천해 줘") 검사하지 않는다.
+const SOURCE_PATTERNS: { re: RegExp; unlessQuestion?: RegExp }[] = [
+  { re: /메모/, unlessQuestion: /메모/ },
+  { re: /노트(에|를|에서|에\s*따르면)/, unlessQuestion: /노트/ },
+  { re: /팀\s*(지식|자료|기록)/ },
+  { re: /(공유|기록|정리|저장)(된|해\s*둔|해\s*두신|하신|한)\s*(내용|정보|자료|지식|기록|메모)/ },
+  { re: /(기록|자료|정보|내용|지식)(에|을|를)\s*(따르면|의하면|보면|보니|참고하면)/ },
+  { re: /팀원(이|들이|분들이|께서)?\s*(남긴|적은|쓴|공유한|말한|올린)/ },
+  { re: /(제가|저는)\s*(알고\s*있는|가진|받은)\s*(정보|자료|내용)/ },
+  { re: /참고(한|했던|할)\s*(정보|자료|내용)/ },
+  { re: /\bknowledge\b|\bmemo\b|\bnotes?\b/i, unlessQuestion: /knowledge|memo|note/i },
+  { re: /회의록/, unlessQuestion: /회의/ },
+  { re: /회의\s*(에서|때|중에|결과|내용)\s*(정한|정했|결정|말한|나온|논의|합의|에\s*따르면|에\s*의하면|를\s*보면)/, unlessQuestion: /회의/ },
+  { re: /(지난|이전|앞선|최근)\s*회의/, unlessQuestion: /회의/ },
+];
+
+/** 답변에서 출처를 드러내는 표현을 찾는다. 빈 배열이면 깨끗하다. */
+export function sourceLeaks(answer: string, question = ""): string[] {
+  const found: string[] = [];
+  for (const p of SOURCE_PATTERNS) {
+    if (p.unlessQuestion?.test(question)) continue;
+    const m = answer.match(p.re);
+    if (m) found.push(m[0]);
+  }
+  return found;
+}
+
+/** 출처 표현이 든 문장(줄·문장 단위)을 뺀다. 남는 것이 없으면 빈 문자열. */
+export function dropLeakySentences(answer: string, question = ""): string {
+  return answer
+    .split("\n")
+    .map((line) => {
+      const parts = line.split(/(?<=[.!?。]|[다요죠]\.)\s+/);
+      return parts.filter((s) => sourceLeaks(s, question).length === 0).join(" ");
+    })
+    .filter((line, i, all) => line.trim() || (i > 0 && all[i - 1]!.trim()))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }

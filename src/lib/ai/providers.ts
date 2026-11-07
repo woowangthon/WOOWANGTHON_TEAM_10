@@ -26,6 +26,12 @@ export const noAiProvider: AiProvider = {
   advise: async () => {
     throw aiUnavailable();
   },
+  chat: async () => {
+    throw aiUnavailable();
+  },
+  summarize: async () => {
+    throw aiUnavailable();
+  },
 };
 
 let devFake: FakeProvider | undefined;

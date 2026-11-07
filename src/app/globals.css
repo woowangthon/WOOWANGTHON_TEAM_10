@@ -59,3 +59,66 @@ button.on { outline: 2px solid var(--accent); }
 details.notice { font-size: .88rem; color: var(--muted); margin: 4px 0 10px; }
 details.notice summary { cursor: pointer; color: var(--accent); }
 details.notice ul { margin: 6px 0 0; padding-left: 18px; } details.notice li { margin: 3px 0; }
+
+/* 11/7 개편: 팀 화면 머리 · 프로젝트 대화 · 메모하기 · 메모 보기 */
+.team-head h1 { margin: 10px 0 8px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 0 0 8px; }
+.tabs a { padding: 8px 14px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs a.on { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+details.team-info { font-size: .9rem; margin: 4px 0 8px; } details.team-info summary { cursor: pointer; color: var(--muted); }
+.field-label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit; max-width: 100%; }
+
+.project-bar { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin: 8px 0 4px; }
+.project-pick { display: flex; gap: 8px; align-items: center; min-width: 0; flex: 1; }
+.project-pick select { flex: 1; min-width: 0; }
+.project-info { margin: 0 0 8px; }
+
+.chat { display: flex; flex-direction: column; gap: 8px; }
+.chat-log { display: flex; flex-direction: column; gap: 10px; padding: 8px 0 4px; min-height: 240px; }
+.chat-log > div { display: flex; flex-direction: column; gap: 10px; }
+.chat-empty { border: 1px dashed var(--line); border-radius: 12px; padding: 14px 16px; }
+.chat-empty ul { margin: 6px 0 0; padding-left: 18px; }
+.bubble { max-width: 85%; padding: 10px 14px; border-radius: 16px; white-space: pre-wrap; word-break: break-word; line-height: 1.6; }
+.bubble.me { align-self: flex-end; background: var(--accent); color: var(--accent-fg); border-bottom-right-radius: 4px; }
+.bubble.ai { align-self: flex-start; background: var(--card); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+.bubble.ai.error { color: var(--danger); }
+.chat-input { position: sticky; bottom: 0; display: flex; gap: 8px; align-items: flex-end; background: var(--bg); padding: 8px 0; }
+.chat-input textarea { min-height: 48px; max-height: 200px; }
+.chat-note { margin: 0; font-size: .8rem; }
+
+.topbar { position: sticky; top: 0; z-index: 20; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  background: var(--bg); padding: 8px 0; margin-top: -8px; }
+.memo-btn { background: var(--fg); color: var(--bg); border-color: var(--fg); font-weight: 600; padding: 6px 12px; font-size: .9rem; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 30; background: var(--fg); color: var(--bg);
+  padding: 10px 16px; border-radius: 10px; font-size: .9rem; max-width: calc(100% - 32px); }
+.toast a { color: var(--bg); text-decoration: underline; }
+.modal-back { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.35); display: flex; align-items: flex-end; justify-content: center; padding: 16px; }
+@media (min-width: 600px) { .modal-back { align-items: center; } }
+.modal { background: var(--card); color: var(--fg); border-radius: 14px; padding: 18px; width: 100%; max-width: 560px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+
+.card.memo.picked { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.card.memo pre.raw { cursor: pointer; margin-top: 0; }
+input.pick { width: 20px; height: 20px; margin: 2px 4px 0 0; flex: none; }
+.memo-meta { font-size: .8rem; margin-top: 4px; }
+.action-bar { position: sticky; bottom: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: var(--bg);
+  padding: 10px 0; border-top: 1px solid var(--line); margin-bottom: 8px; }
+.action-bar .muted { flex: 1; min-width: 120px; }
+.composer textarea { min-height: 160px; }
+.memo-ai { font-size: .85rem; color: var(--muted); margin: 6px 0; }
+
+/* 회의록 */
+details.meeting summary { cursor: pointer; list-style: none; }
+details.meeting summary::-webkit-details-marker { display: none; }
+details.meeting summary::before { content: "▸ "; color: var(--muted); }
+details.meeting[open] summary::before { content: "▾ "; }
+details.meeting pre.raw { margin-top: 10px; }
+.meeting-meta { font-size: .8rem; margin: 2px 0 0 14px; font-weight: normal; }
+.manage { border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 6px; }
+ol.history { margin: 8px 0 0; padding-left: 18px; font-size: .88rem; }
+ol.history li { margin: 8px 0; }
+.diff { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+.diff-add { color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.diff-del { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); text-decoration: line-through; }
+.diff-same { color: var(--muted); }
+.diff-skip { color: var(--muted); font-style: italic; }

@@ -14,6 +14,11 @@ export type Candidate = {
   conditions: string[];
   kind: string | null;
   allowExternalAi: boolean;
+  /** memo | summary | meeting */
+  origin: string;
+  /** 회의록 제목·날짜 (회의록만) */
+  title: string | null;
+  meetingDate: string | null;
   /** 작업 맥락의 키워드 중 이 메모에 나타난 개수 */
   hits: number;
   score: number;
@@ -34,6 +39,7 @@ export async function findCandidates(teamId: string, query: string, opts: Search
   const r = await getPool().query(
     `with eligible as (
        select v.id as version_id, n.id as note_id, v.raw_text, v.restated, v.kind, v.search_text, n.updated_at,
+              n.origin, n.title, n.meeting_date::text as meeting_date,
               n.allow_external_ai
        from notes n
        join note_versions v on v.id = n.current_version_id and v.team_id = n.team_id
@@ -62,6 +68,9 @@ export async function findCandidates(teamId: string, query: string, opts: Search
     conditions: row.restated?.conditions ?? [],
     kind: row.kind,
     allowExternalAi: row.allow_external_ai,
+    origin: row.origin,
+    title: row.title ?? null,
+    meetingDate: row.meeting_date ?? null,
     hits: Number(row.hits),
     score: tokens.length ? row.hits / tokens.length : 0,
   }));
