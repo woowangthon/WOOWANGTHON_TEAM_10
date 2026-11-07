@@ -35,9 +35,12 @@ export type ProjectContext = { title: string; purpose: string; audience: string;
 /** 대화형 질문. knowledge 는 권한·상태 필터를 거친 팀 공유 메모(요청 한정 번호). 비어 있어도 답한다. */
 export type ChatInput = {
   project: ProjectContext;
-  history: { question: string; answer: string }[];
+  /** answer 가 null 이면 그 턴은 질문만 건넨다(답변이 지금은 쓸 수 없는 지식에 기댔을 수 있음) */
+  history: { question: string; answer: string | null }[];
   knowledge: CandidateForAi[];
   question: string;
+  /** 서버가 답변을 다시 쓰게 할 때 덧붙이는 지시 (출처 표현이 나왔을 때) */
+  retryNote?: string;
 };
 
 /** 작성자가 고른 자기 메모들을 하나의 정리문으로 */

@@ -86,7 +86,7 @@ async function main() {
   const A = new Client("A"), B = new Client("B"), C = new Client("C");
   const pw = `Smoke-${TAG}-pass-word`;
   let teamId = "", inviteCode = "", note1 = { id: "", versionId: "", hash: "" }, note2 = { id: "", versionId: "", hash: "" };
-  let taskId = "", adviceId = "", firstItemId = "", chatId = "";
+  let taskId = "", adviceId = "", firstItemId = "", chatId = "", sharedNoteId = "";
   let ai = { provider: "none", available: false, model: null as string | null };
 
   await step("상태 점검 /api/health", async () => {
@@ -216,6 +216,7 @@ async function main() {
     }
     const sh = await A.call("POST", `/api/teams/${teamId}/shared`, { text, sourceNoteIds: [m1.data.noteId, m2.data.noteId] });
     expect(sh.status === 200, `공유 실패 HTTP ${sh.status} ${sh.data.message ?? ""}`);
+    sharedNoteId = sh.data.noteId;
     const seen = await B.call("GET", `/api/teams/${teamId}/memos`);
     expect((seen.data.shared ?? []).some((x: Json) => x.text === text), "공유한 정리가 다른 팀원에게 보이지 않음");
     return note;
@@ -235,6 +236,23 @@ async function main() {
     const peek = await A.call("GET", `/api/tasks/${taskId}/chat`);
     expect(Array.isArray(peek.data) && peek.data.length === 0, "다른 팀원의 대화가 보임");
     return `${r.ms}ms · 답변 ${r.data.answer.length}자 · 무관 질문 ${empty.ms}ms`;
+  });
+
+  await softStep("공유 철회 → 대화 답변은 사유 표시 없이 다시 쓰임", async () => {
+    if (!chatId) return "대화 없음: 건너뜀";
+    const w = await A.call("POST", `/api/notes/${sharedNoteId}/withdraw`, {});
+    expect(w.status === 200, `철회 실패 HTTP ${w.status}`);
+    const list = await B.call("GET", `/api/tasks/${taskId}/chat`);
+    const turn = (list.data as Json[]).find((t) => t.id === chatId);
+    expect(turn, "대화가 사라짐");
+    const text = JSON.stringify(list.data);
+    expect(!/숨겼|철회|삭제되어|메모/.test(text), "대화 목록에 출처를 짐작하게 하는 문구가 있음");
+    if (!turn!.stale) return "이 답변은 철회한 지식을 반영했다고 밝히지 않음: 그대로 유지";
+    const r = await B.call("POST", `/api/tasks/${taskId}/chat/refresh`, {});
+    expect(r.status === 200, `다시 쓰기 실패 HTTP ${r.status} ${r.data.message ?? ""}`);
+    const again = (r.data as Json[]).find((t) => t.id === chatId);
+    expect(again?.status === "ok" && again.answer && !again.stale, `다시 쓴 답변 상태 ${again?.status}`);
+    return `다시 씀 ${r.ms}ms`;
   });
 
   await step("A 철회 → B 조언에서 숨김", async () => {

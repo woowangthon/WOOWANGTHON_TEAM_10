@@ -350,7 +350,7 @@ type EvidenceView =
 export async function markStale(db: Db, where: string, params: unknown[]) {
   await db.query(
     `update advice_requests set status = 'failed', error = 'stale', finished_at = now()
-     where status = 'pending' and created_at < now() - ($${params.length + 1} || ' milliseconds')::interval and ${where}`,
+     where status = 'pending' and coalesce(started_at, created_at) < now() - ($${params.length + 1} || ' milliseconds')::interval and ${where}`,
     [...params, String(STALE_MS)],
   );
 }

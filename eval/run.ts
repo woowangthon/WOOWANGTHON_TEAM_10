@@ -7,7 +7,9 @@
 //  2. 질문 10개를 세 조건으로 실행한다.
 //     A: 일반 AI (팀 메모 없음)            — 팀 자료 제공의 추가 가치를 보는 기준
 //     B: 공유 메모를 통째로 붙여 넣은 AI     — 기존 도구 조합. 권한 필터·서버 검증 없음
-//     C: 이 서비스의 흐름                   — 권한 → 후보 → 판정 → 생성 → 검증
+//     C: 이 서비스의 이전 조언 흐름          — 권한 → 후보 → 판정 → 생성 → 검증
+//     D: 이 서비스의 프로젝트 대화           — 출처를 드러내지 않는 일반 대화형 답변 (11/7 추가)
+//        지표: 항상 답했는지, 출처 표현 노출, 메모 속 명령(주입)을 따랐는지, 반영했다고 밝힌 메모의 회수율·억지 연결
 //  3. 자동 지표(핵심 회수율, 억지 연결, 철회·초안 인용, 지어낸 근거, 토큰·비용)와 사람 점검표를 eval/results/<실행ID>/ 에 남긴다.
 //
 // 주의: 비교의 공정성을 위해 A·B 도 같은 출력 형식(JSON 스키마)을 쓴다. 지시문은 짧고 일반적으로 둔다.
@@ -16,6 +18,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAdvice, requestAdvice } from "../src/lib/advice.ts";
+import { sourceLeaks } from "../src/lib/ai/validate-output.ts";
+import { askInProject } from "../src/lib/chat.ts";
 import { OpenAiProvider } from "../src/lib/ai/openai.ts";
 import { ADVISE_SCHEMA, PROMPT_VERSION } from "../src/lib/ai/prompts.ts";
 import { getProvider } from "../src/lib/ai/providers.ts";
@@ -101,7 +105,7 @@ function scoreC(q: Question, items: ItemRow[]) {
 }
 
 const args = new Map(process.argv.slice(2).map((a) => { const [k, v] = a.replace(/^--/, "").split("="); return [k!, v ?? "true"]; }));
-const CONDITIONS = (args.get("conditions") ?? "A,B,C").split(",");
+const CONDITIONS = (args.get("conditions") ?? "A,B,C,D").split(",");
 const DO_RESTATE = args.get("restate") !== "false";
 const OUT_DIR = args.get("out") ?? "eval/results";
 
@@ -206,6 +210,23 @@ async function main() {
       log(`${q.id} C: 상태 ${full.status} · 핵심 ${row.C.coreHits.length}/${q.core.length} · 억지 ${row.C.falseLinks.length} · 키워드만 ${row.C.keywordOnly.length} · 금지 ${row.C.forbiddenHits.length} · 항목 ${full.items.length} · $${row.C.cost.toFixed(4)}`);
     }
 
+    if (CONDITIONS.includes("D") && provider.isAi) {
+      const t = await askInProject(asker, task.id, { question: q.question }, provider);
+      const ev = await getPool().query("select evidence_version_ids from advice_items where request_id = $1 and section = 'answer'", [t.id]);
+      const refs = ((ev.rows[0]?.evidence_version_ids as string[] | undefined) ?? []).map((v) => versionToMemo.get(v) ?? `?${v.slice(0, 8)}`);
+      const u = (await getPool().query("select usage from advice_requests where id = $1", [t.id])).rows[0]?.usage ?? null;
+      const items = t.answer ? [{ section: "answer", body: t.answer, refs }] : [];
+      row.D = {
+        status: t.status, error: t.error, items,
+        usage: u ? { input: u.input, cached: u.cached, output: u.output, reasoning: u.reasoning, ms: u.ms, calls: u.calls?.length ?? 0 } : null,
+        ...score(q, refs),
+        ...scoreInjection(items, cases.memos),
+        sourceLeaks: t.answer ? sourceLeaks(t.answer, q.question) : [],
+      };
+      row.D.cost = row.D.usage ? cost(row.D.usage) : 0;
+      log(`${q.id} D: 상태 ${t.status} · 반영 밝힘 ${refs.length} · 핵심 ${row.D.coreHits.length}/${q.core.length} · 억지 ${row.D.falseLinks.length} · 금지 ${row.D.forbiddenHits.length} · 출처 노출 ${row.D.sourceLeaks.length} · 주입 ${row.D.injectionFollowed.length} · ${u?.calls?.length ?? 0}회 호출 · $${row.D.cost.toFixed(4)}`);
+    }
+
     if (openai && CONDITIONS.includes("B")) {
       const listed = sharedMemos.map((m, i) => ({ ref: `M${i + 1}`, memo: m }));
       const refToMemo = new Map(listed.map((x) => [x.ref, x.memo.id]));
@@ -288,6 +309,8 @@ function summarize(results: Record<string, any>[], conditions: string[], restate
       injectionFollowedTotal: rows.reduce((a, r) => a + (r.injectionFollowed?.length ?? 0), 0),
       emailLeakTotal: rows.reduce((a, r) => a + (r.emailLeak ?? 0), 0),
       injectionCitedTotal: rows.reduce((a, r) => a + (r.injectionCited?.length ?? 0), 0),
+      sourceLeakTotal: rows.reduce((a, r) => a + (r.sourceLeaks?.length ?? 0), 0),
+      answeredTotal: rows.filter((r) => r.status === "ok" && r.items?.length).length,
       failed: rows.filter((r) => r.status && r.status !== "ok").length,
       tokens: u,
       avgMs: Math.round(u.ms / rows.length),
@@ -308,13 +331,18 @@ function renderReport(raw: Record<string, any>, cases: Cases): string {
   L.push(`- 메모 ${cases.memos.length}개, 질문 ${cases.questions.length}개, 조건 ${raw.conditions.join("/")}, AI 정리 ${raw.restate ? "켬" : "끔"}`);
   L.push(`- 가격 가정(USD/1M 토큰): 입력 ${raw.price.input}, 캐시 ${raw.price.cached}, 출력 ${raw.price.output} → **총 비용 $${s.totalCostUsd}**`, "");
   L.push("## 자동 지표 요약", "", "| 조건 | 실행 | 핵심 회수율(평균) | 억지 연결(AI) | 키워드만 항목(그중 무관) | 금지(철회·초안) 인용 | 단어만 겹친 메모 인용 | 지어낸 근거 | 항목 수 | 실패 | 토큰(입력/출력) | 평균 시간 | 비용 |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: |");
-  for (const c of ["C", "B", "A"]) {
+  for (const c of ["D", "C", "B", "A"]) {
     const v = s[c];
     if (!v) continue;
     const kw = c === "C" ? `${v.keywordOnlyTotal} (${v.keywordOnlyFalseTotal})` : "-";
     L.push(`| ${c} | ${v.runs} | ${v.coreRecallAvg ?? "-"} | ${v.falseLinksTotal} | ${kw} | ${v.forbiddenTotal} | ${v.trickyTotal} | ${v.inventedTotal} | ${v.itemsTotal} | ${v.failed} | ${v.tokens.input}/${v.tokens.output} | ${(v.avgMs / 1000).toFixed(1)}s | $${v.costUsd} |`);
   }
   L.push(`| 정리 | ${s.restate.calls ?? 0} | - | - | - | - | - | - | - | - | ${s.restate.tokens?.input ?? 0}/${s.restate.tokens?.output ?? 0} | ${((s.restate.avgMs ?? 0) / 1000).toFixed(1)}s | $${s.restate.costUsd ?? 0} |`, "");
+  if (s.D) {
+    L.push("## 조건 D: 프로젝트 대화 (출처 비노출)", "", "| 항상 답함 | 출처 표현 노출 | 카나리아(주입 따름) | 이메일 형태 | 반영 밝힌 메모 회수율 | 억지 연결 | 철회·초안 반영 | 평균 시간 | 비용 |", "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+    L.push(`| ${s.D.answeredTotal}/${s.D.runs} | ${s.D.sourceLeakTotal} | ${s.D.injectionFollowedTotal} | ${s.D.emailLeakTotal} | ${s.D.coreRecallAvg ?? "-"} | ${s.D.falseLinksTotal} | ${s.D.forbiddenTotal} | ${(s.D.avgMs / 1000).toFixed(1)}s | $${s.D.costUsd} |`, "");
+    L.push("회수율·억지 연결은 모델이 '반영했다'고 밝힌 메모 기준이다(화면에는 보이지 않음). 출처 표현은 서버 검사(1회 다시 쓰기, 남으면 문장 제거)를 거친 최종 답변 기준.", "");
+  }
   L.push("조건 A 는 팀 메모를 주지 않으므로 회수율·근거 지표가 없다. 조건 B 는 AI 미허용 메모까지 모델에 보낸다(권한 개념 없음). 억지 연결 = AI 가 core·ok 밖의 메모를 근거로 인용한 수. 키워드만 항목 = AI 미허용 메모가 키워드 일치로 붙은 수(AI 를 거치지 않음).", "");
 
   const injMemos = cases.memos.filter((m) => m.injection);
@@ -331,7 +359,7 @@ function renderReport(raw: Record<string, any>, cases: Cases): string {
 
   L.push("## 질문별 결과", "", "| 질문 | 조건 | 상태 | 핵심 | 찾은 메모 | 억지 연결 | 금지 인용 | 비고 |", "| --- | --- | --- | --- | --- | --- | --- | --- |");
   for (const r of raw.results) {
-    for (const c of ["C", "B"]) {
+    for (const c of ["D", "C", "B"]) {
       const v = r[c];
       if (!v) continue;
       const note = c === "C" ? [v.emptyReason && `빈 이유 ${v.emptyReason}`, v.dropped ? `버림 ${v.dropped}` : "", v.keywordOnly?.length ? `키워드만 ${v.keywordOnly.join(",")}` : "", v.status === "failed" && v.error ? `오류 ${v.error}` : ""].filter(Boolean).join(" · ") : v.invented ? `지어낸 근거 ${v.invented}` : "";
@@ -349,7 +377,7 @@ function renderReport(raw: Record<string, any>, cases: Cases): string {
   L.push("## 사람 점검표", "", "각 질문의 점검 기준을 보고 ✅/❌ 를 적는다. 숫자·조건·추측·상충이 보존됐는지, 근거 없는 내용을 팀 의견처럼 썼는지 본다.", "");
   for (const r of raw.results) {
     L.push(`### ${r.id} ${r.title} — "${r.question}"`, "", `점검 기준: ${r.check}`, "");
-    for (const c of ["C", "B", "A"]) {
+    for (const c of ["D", "C", "B", "A"]) {
       const v = r[c];
       if (!v) continue;
       L.push(`**조건 ${c}** (항목 ${v.items.length}개)`, "");

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { FakeProvider } from "../src/lib/ai/fake.ts";
 import { noAiProvider } from "../src/lib/ai/providers.ts";
-import { validateChatOutput } from "../src/lib/ai/validate-output.ts";
-import { askInProject, listChat } from "../src/lib/chat.ts";
+import { sourceLeaks, validateChatOutput } from "../src/lib/ai/validate-output.ts";
+import { askInProject, listChat, refreshStale } from "../src/lib/chat.ts";
 import { getPool } from "../src/lib/db.ts";
-import { listMemos, reviseShared, shareSummary, summarizeMemos } from "../src/lib/memos.ts";
+import { listMemos, reviseShared, setAiReference, shareSummary, summarizeMemos } from "../src/lib/memos.ts";
 import { createNote, deleteNote, withdrawNote } from "../src/lib/notes.ts";
 import { createTask } from "../src/lib/tasks.ts";
 import { createTeam, joinTeam } from "../src/lib/teams.ts";
@@ -74,38 +74,109 @@ describe("프로젝트 대화", () => {
     expect(sent).not.toContain("다른 팀");
   });
 
-  it("반영한 지식을 철회하면 그 답변만 숨기고, 반영하지 않은 지식의 철회는 영향이 없다", async () => {
+  it("반영한 지식을 철회하면 그 답변만 '다시 쓸 답변'이 되고, 다시 열면 출처 표시 없이 새로 쓴다", async () => {
     const s = await setup();
     const used = await askInProject(s.bob, s.projectId, { question: "실험 그래프" }, leaky());
     const unused = await askInProject(s.bob, s.projectId, { question: "발표 순서" }, new FakeProvider({ chat: () => ({ answer: "결론부터", used_refs: [] }) }));
     await withdrawNote(s.alice, s.room.noteId); // 아무 답변도 반영하지 않은 지식
     let turns = await listChat(s.bob, s.projectId);
-    expect(turns.map((t) => t.hidden)).toEqual([false, false]);
+    expect(turns.map((t) => t.stale)).toEqual([false, false]);
     await withdrawNote(s.alice, s.exp.noteId);
     turns = await listChat(s.bob, s.projectId);
-    expect(turns.find((t) => t.id === used.id)).toMatchObject({ hidden: true, answer: null });
-    expect(turns.find((t) => t.id === unused.id)).toMatchObject({ hidden: false, answer: "결론부터" });
+    // 화면에는 사유 없이 '작성 중'으로만 보인다
+    expect(turns.find((t) => t.id === used.id)).toMatchObject({ stale: true, status: "pending", answer: null, error: null });
+    expect(turns.find((t) => t.id === unused.id)).toMatchObject({ stale: false, answer: "결론부터" });
+
+    const rec = recording(new FakeProvider({ chat: () => ({ answer: "축과 단위를 맞추세요.", used_refs: [] }) }));
+    turns = await refreshStale(s.bob, s.projectId, rec.provider);
+    expect(turns.find((t) => t.id === used.id)).toMatchObject({ stale: false, status: "ok", answer: "축과 단위를 맞추세요." });
+    // 다시 쓸 때 철회된 지식은 건네지 않고, 같은 질문으로 다시 묻는다. "쓰지 마" 같은 지시도 없다
+    expect(rec.calls.chat[0]!.question).toBe("실험 그래프");
+    expect(rec.calls.chat[0]!.knowledge.map((k) => k.text).join(" ")).not.toContain("측정 조건");
+    expect(JSON.stringify(rec.calls.chat[0])).not.toMatch(/쓰지 마|참조하지|철회/);
   });
 
-  it("반영한 지식을 삭제하면 답변 본문을 DB 에서 지운다", async () => {
+  it("반영한 지식을 삭제하면 답변 본문을 바로 지우고, 다시 열면 새로 쓴다", async () => {
     const s = await setup();
     const t = await askInProject(s.bob, s.projectId, { question: "실험 그래프" }, leaky());
     await deleteNote(s.alice, s.exp.noteId);
     const r = await getPool().query("select body, purged from advice_items where request_id = $1", [t.id]);
     expect(r.rows[0]).toMatchObject({ body: "", purged: true });
+    expect((await listChat(s.bob, s.projectId))[0]).toMatchObject({ stale: true, answer: null });
+    const after = await refreshStale(s.bob, s.projectId, new FakeProvider({ chat: () => ({ answer: "새 답변", used_refs: [] }) }));
+    expect(after[0]).toMatchObject({ stale: false, answer: "새 답변" });
+    const rows = await getPool().query("select body from advice_items where request_id = $1", [t.id]);
+    expect(rows.rows.map((x) => x.body)).toEqual(["새 답변"]);
   });
 
-  it("이전 대화를 이어서 건네고, 숨겨진 답변은 건네지 않는다", async () => {
+  it("AI 참고를 끄면 그 지식은 더 이상 모델에 가지 않고, 반영했던 답변은 다시 쓴다", async () => {
+    const s = await setup();
+    const t = await askInProject(s.bob, s.projectId, { question: "실험 그래프" }, leaky());
+    await setAiReference(s.alice, s.exp.noteId, { allowExternalAi: false });
+    expect((await listChat(s.bob, s.projectId))[0]).toMatchObject({ id: t.id, stale: true });
+    const rec = recording(new FakeProvider({ chat: () => ({ answer: "네", used_refs: [] }) }));
+    await askInProject(s.bob, s.projectId, { question: "실험 정리" }, rec.provider);
+    expect(rec.calls.chat[0]!.knowledge.map((k) => k.text).join(" ")).not.toContain("측정 조건");
+    // 다른 사람은 바꿀 수 없다
+    await expect(setAiReference(s.bob, s.exp.noteId, { allowExternalAi: true })).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("다시 쓰기에 실패해도 예전 답변이 되살아나지 않는다", async () => {
     const s = await setup();
     await askInProject(s.bob, s.projectId, { question: "실험 그래프" }, leaky());
-    await askInProject(s.bob, s.projectId, { question: "제목은?" }, new FakeProvider({ chat: () => ({ answer: "짧게", used_refs: [] }) }));
+    await withdrawNote(s.alice, s.exp.noteId);
+    const after = await refreshStale(s.bob, s.projectId, new FakeProvider({ chat: () => ({ nope: true }) }));
+    expect(after[0]).toMatchObject({ status: "failed", answer: null, stale: false });
+    expect(JSON.stringify(after)).not.toContain("온도 조건");
+  });
+
+  it("이전 대화를 이어서 건네되, 지금 쓸 수 없는 지식이 넘어갔던 턴은 질문만 건넨다 (반영을 밝히지 않았어도)", async () => {
+    const s = await setup();
+    // 반영 사실을 밝히지 않고 지식을 쓴 답변
+    const quiet = new FakeProvider({ chat: () => ({ answer: "22도와 26도는 다른 조건이에요", used_refs: [] }) });
+    await askInProject(s.bob, s.projectId, { question: "실험 그래프" }, quiet);
     const rec = recording(new FakeProvider({ chat: () => ({ answer: "네", used_refs: [] }) }));
     await askInProject(s.bob, s.projectId, { question: "다음은?" }, rec.provider);
-    expect(rec.calls.chat[0]!.history.map((h) => h.question)).toEqual(["실험 그래프", "제목은?"]);
+    expect(rec.calls.chat[0]!.history).toEqual([{ question: "실험 그래프", answer: "22도와 26도는 다른 조건이에요" }]);
+
     await withdrawNote(s.alice, s.exp.noteId);
+    // 화면의 답변은 그대로 (반영을 밝히지 않았으므로 다시 쓰지 않음)
+    expect((await listChat(s.bob, s.projectId)).map((t) => t.stale)).toEqual([false, false]);
     const rec2 = recording(new FakeProvider({ chat: () => ({ answer: "네", used_refs: [] }) }));
     await askInProject(s.bob, s.projectId, { question: "또?" }, rec2.provider);
-    expect(rec2.calls.chat[0]!.history.map((h) => h.question)).toEqual(["제목은?", "다음은?"]);
+    // 철회된 지식이 넘어갔던 턴은 답변 없이 질문만
+    expect(rec2.calls.chat[0]!.history).toEqual([{ question: "실험 그래프", answer: null }, { question: "다음은?", answer: null }]);
+    expect(JSON.stringify(rec2.calls.chat[0]!.history)).not.toContain("22도");
+  });
+
+  it("답변에 출처 표현이 나오면 한 번 다시 쓰게 하고, 그래도 나오면 그 문장을 뺀다", async () => {
+    const s = await setup();
+    let calls = 0;
+    const once = new FakeProvider({ chat: (i) => (calls++ === 0 ? { answer: "공유된 내용에 따르면 22도예요.", used_refs: [] } : { answer: i.retryNote ? "온도가 22도예요." : "?", used_refs: [] }) });
+    const t1 = await askInProject(s.bob, s.projectId, { question: "온도?" }, once);
+    expect(calls).toBe(2);
+    expect(t1.answer).toBe("온도가 22도예요.");
+
+    const stubborn = new FakeProvider({ chat: () => ({ answer: "축을 맞추세요. 팀원이 남긴 기록을 보면 12개예요.\n- 단위도 적으세요", used_refs: [] }) });
+    const t2 = await askInProject(s.bob, s.projectId, { question: "그래프?" }, stubborn);
+    expect(t2.answer).toBe("축을 맞추세요.\n- 단위도 적으세요");
+
+    const allLeak = new FakeProvider({ chat: () => ({ answer: "메모에 따르면 그래요.", used_refs: [] }) });
+    const t3 = await askInProject(s.bob, s.projectId, { question: "그래?" }, allLeak);
+    expect(t3).toMatchObject({ status: "failed", answer: null });
+
+    // 질문에 그 낱말이 있으면 검사하지 않는다
+    const memoApp = new FakeProvider({ chat: () => ({ answer: "메모 앱은 가벼운 것이 좋아요.", used_refs: [] }) });
+    const t4 = await askInProject(s.bob, s.projectId, { question: "메모 앱 추천해 줘" }, memoApp);
+    expect(t4.answer).toBe("메모 앱은 가벼운 것이 좋아요.");
+  });
+
+  it("출처 표현 검사기", () => {
+    expect(sourceLeaks("공유된 내용에 따르면 22도입니다.")).not.toEqual([]);
+    expect(sourceLeaks("자료에 따르면 그렇습니다.")).not.toEqual([]);
+    expect(sourceLeaks("팀원들이 남긴 의견처럼")).not.toEqual([]);
+    expect(sourceLeaks("22도와 26도로 조건이 달라요. 표본 12개면 오차가 커요.")).toEqual([]);
+    expect(sourceLeaks("메모 앱은 노션", "메모 앱 추천")).toEqual([]);
   });
 
   it("대화는 묻는 사람에게만 보인다", async () => {

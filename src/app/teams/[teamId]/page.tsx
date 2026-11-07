@@ -5,7 +5,7 @@ import { api } from "../../api-client.ts";
 import { AiBanner, TeamHeader, useAiConfig, type TeamInfo } from "../team-header.tsx";
 
 type Project = { id: string; title: string; purpose: string; audience: string; constraints: string; version: number };
-type Turn = { id: string; question: string; status: string; error: string | null; createdAt: string; answer: string | null; hidden: boolean };
+type Turn = { id: string; question: string; status: string; error: string | null; createdAt: string; answer: string | null; stale: boolean };
 type ProjectForm = { title: string; purpose: string; audience: string; constraints: string };
 
 const EMPTY_FORM: ProjectForm = { title: "", purpose: "", audience: "", constraints: "" };
@@ -22,7 +22,7 @@ const ERROR_TEXT: Record<string, string> = {
   invalid_ai_output: "AI 응답 형식이 올바르지 않았습니다. 다시 물어봐 주세요.",
   stale: "처리가 중간에 멈췄습니다. 다시 물어봐 주세요.",
   task_changed: "답하는 사이 프로젝트 정보가 바뀌었습니다. 다시 물어봐 주세요.",
-  source_changed: "답하는 사이 참고하던 정보가 바뀌었습니다. 다시 물어봐 주세요.",
+  source_changed: "답변을 마무리하지 못했습니다. 다시 물어봐 주세요.",
   requester_left: "팀을 나가 답변을 저장하지 않았습니다.",
   internal: "일시적인 오류가 발생했습니다.",
 };
@@ -54,24 +54,26 @@ export default function TeamChatPage({ params }: { params: Promise<{ teamId: str
     history.replaceState(null, "", url);
   };
 
+  const project = projects?.find((p) => p.id === projectId) ?? null;
+  const noProjects = projects !== null && projects.length === 0;
+  // 화면에 보이는 양식 값 (처음 프로젝트는 아무것도 고치지 않아도 미리 채운 이름으로 만들 수 있어야 한다)
+  const editor = form ?? (noProjects ? { mode: "new" as const, value: { ...EMPTY_FORM, title: team ? `${team.name} 프로젝트` : "" } } : null);
+
   const saveProject = async () => {
-    if (!form) return;
+    if (!editor) return;
     setError("");
     try {
-      if (form.mode === "new") {
-        const p = await api<Project>(`/api/teams/${teamId}/tasks`, { body: form.value });
+      if (editor.mode === "new") {
+        const p = await api<Project>(`/api/teams/${teamId}/tasks`, { body: editor.value });
         setForm(null);
         await loadProjects(p.id);
       } else if (projectId) {
-        await api(`/api/tasks/${projectId}`, { method: "PATCH", body: form.value });
+        await api(`/api/tasks/${projectId}`, { method: "PATCH", body: editor.value });
         setForm(null);
         await loadProjects(projectId);
       }
     } catch (e) { setError((e as Error).message); }
   };
-
-  const project = projects?.find((p) => p.id === projectId) ?? null;
-  const noProjects = projects !== null && projects.length === 0;
 
   return (
     <main className="chat-page">
@@ -97,11 +99,11 @@ export default function TeamChatPage({ params }: { params: Promise<{ teamId: str
         </p>
       )}
 
-      {(form || noProjects) && (
+      {editor && (
         <ProjectEditor
-          mode={form?.mode ?? "new"}
-          value={form?.value ?? { ...EMPTY_FORM, title: team ? `${team.name} 프로젝트` : "" }}
-          onChange={(value) => setForm({ mode: form?.mode ?? "new", value })}
+          mode={editor.mode}
+          value={editor.value}
+          onChange={(value) => setForm({ mode: editor.mode, value })}
           onSave={saveProject}
           onCancel={form && !noProjects ? () => setForm(null) : undefined}
           first={noProjects}
@@ -143,12 +145,22 @@ function Chat({ project, aiReady }: { project: Project; aiReady: boolean }) {
   const [error, setError] = useState("");
   const end = useRef<HTMLDivElement>(null);
 
+  const refreshing = useRef(false);
   const load = () => api<Turn[]>(`/api/tasks/${project.id}/chat`).then(setTurns, (e) => setError((e as Error).message));
   useEffect(() => { load(); }, [project.id]);
+  // 다시 써야 하는 답변이 있으면 조용히 다시 쓴다 (화면에는 평범한 '답변 작성 중'으로 보임)
+  useEffect(() => {
+    const count = turns?.filter((t) => t.stale).length ?? 0;
+    if (!count || refreshing.current) return;
+    refreshing.current = true;
+    api<Turn[]>(`/api/tasks/${project.id}/chat/refresh`, { body: {} })
+      .then((next) => { refreshing.current = false; if (next.filter((t) => t.stale).length < count) setTurns(next); else setTurns(next.map((t) => (t.stale ? { ...t, stale: false, status: "failed", error: "ai_error" } : t))); },
+        () => { refreshing.current = false; setTurns((prev) => prev?.map((t) => (t.stale ? { ...t, stale: false, status: "failed", error: "ai_error" } : t)) ?? prev); });
+  }, [turns, project.id]);
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [turns?.length, pending]);
   // 다른 탭에서 보낸 질문이 아직 처리 중이면 끝날 때까지 다시 읽는다
   useEffect(() => {
-    if (!turns?.some((t) => t.status === "pending") || pending) return;
+    if (!turns?.some((t) => t.status === "pending" && !t.stale) || pending) return;
     const timer = setInterval(load, 3000);
     return () => clearInterval(timer);
   }, [turns, pending]);
@@ -208,7 +220,6 @@ function Chat({ project, aiReady }: { project: Project; aiReady: boolean }) {
 
 function Answer({ t }: { t: Turn }) {
   if (t.status === "pending") return <div className="bubble ai muted">답변 작성 중…</div>;
-  if (t.hidden) return <div className="bubble ai muted">이 답변에 쓰인 정보가 바뀌거나 삭제되어 답변을 숨겼습니다. 다시 물어봐 주세요.</div>;
   if (t.status !== "ok" || !t.answer) return <div className="bubble ai error">{ERROR_TEXT[t.error ?? "internal"] ?? ERROR_TEXT.internal}</div>;
   return <div className="bubble ai">{t.answer}</div>;
 }

@@ -157,13 +157,13 @@ function SharedCard({ s, run }: { s: SharedMemo; run: Run }) {
   return (
     <div className="card">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <span className="muted">{s.authorName}{s.isAuthor ? " (나)" : ""} · {fmt(s.updatedAt)}{!s.allowExternalAi && " · AI 참고 안 함"}</span>
+        <span className="muted">{s.authorName}{s.isAuthor ? " (나)" : ""} · {fmt(s.updatedAt)}{!s.allowExternalAi && !s.isAuthor && " · AI 참고 안 함"}</span>
         {s.state !== "shared" && <span className="badge withdrawn">{s.state === "withdrawn" ? "공유 철회됨 (나만 봄)" : "공유 안 됨 (나만 봄)"}</span>}
       </div>
       {editing ? (
         <>
           <textarea aria-label="공유 메모 수정" value={text} maxLength={2000} onChange={(e) => setText(e.target.value)} />
-          <p className="warn">저장하면 고친 내용으로 다시 공유됩니다. 이전 내용을 참고한 AI 답변은 숨겨집니다.</p>
+          <p className="muted">저장하면 고친 내용으로 다시 공유됩니다.</p>
           <div className="row">
             <button className="primary small" disabled={!text.trim() || text === s.text}
               onClick={() => run("revise", () => api(`/api/notes/${s.id}/revise`, { body: { text } })).then(() => setEditing(false))}>저장하고 다시 공유</button>
@@ -174,6 +174,12 @@ function SharedCard({ s, run }: { s: SharedMemo; run: Run }) {
         <pre className="raw">{s.text}</pre>
       )}
       {s.isAuthor && !editing && (
+        <label className="check memo-ai">
+          <input type="checkbox" checked={s.allowExternalAi}
+            onChange={(e) => run("ai", () => api(`/api/notes/${s.id}/ai`, { method: "PATCH", body: { allowExternalAi: e.target.checked } }))} />
+          AI가 대화할 때 참고</label>
+      )}
+      {s.isAuthor && !editing && (
         <div className="row">
           <button className="small" onClick={() => { setText(s.text); setEditing(true); }}>수정</button>
           {s.state === "shared" && (
@@ -182,7 +188,7 @@ function SharedCard({ s, run }: { s: SharedMemo; run: Run }) {
           {s.state === "withdrawn" && (
             <button className="small" onClick={() => run("reshare", () => api(`/api/notes/${s.id}/versions/${s.versionId}/share`, { body: {} }))}>다시 공유</button>
           )}
-          <button className="small danger" onClick={() => confirm("삭제하면 되돌릴 수 없습니다. 이 내용을 참고한 AI 답변도 지워집니다. 삭제할까요?") &&
+          <button className="small danger" onClick={() => confirm("삭제하면 되돌릴 수 없습니다. 삭제할까요?") &&
             run("delete", () => api(`/api/notes/${s.id}`, { method: "DELETE" }))}>삭제</button>
         </div>
       )}

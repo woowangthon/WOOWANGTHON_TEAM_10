@@ -6,6 +6,8 @@
 alter table advice_requests
   add column kind text not null default 'advice' check (kind in ('advice', 'chat'));
 create index advice_requests_chat on advice_requests (task_id, requester_id, created_at) where kind = 'chat';
+-- 답변을 (다시) 만들기 시작한 시각. 지식이 바뀐 답변을 조용히 다시 쓸 때, 오래된 요청이 '멈춘 요청'으로 오인되지 않게 한다.
+alter table advice_requests add column started_at timestamptz;
 
 alter table advice_items drop constraint advice_items_section_check,
   add constraint advice_items_section_check

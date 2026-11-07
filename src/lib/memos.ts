@@ -11,7 +11,7 @@ import { AiTimeout, aiTimeoutMs, withTimeout } from "./ai/timeout.ts";
 import type { AiProvider } from "./ai/types.ts";
 import { audit, getPool, withTx } from "./db.ts";
 import { AppError, badRequest, conflict, notFound } from "./errors.ts";
-import { confirmVersion, contentHash, editNote, shareNote } from "./notes.ts";
+import { confirmVersion, contentHash, editNote, invalidateAdviceForNote, shareNote } from "./notes.ts";
 import { restatementWarnings } from "./restate-check.ts";
 import { bool, cleanText, text, uuid } from "./validate.ts";
 
@@ -160,4 +160,24 @@ export async function reviseShared(userId: string, noteId: string, input: { text
   const c = await confirmVersion(userId, noteId, edited.versionId, { choice: "raw_only", expectedHash: edited.contentHash });
   if (c.intentState !== "raw_only") throw conflict("다시 시도해 주세요.");
   return shareNote(userId, noteId, edited.versionId);
+}
+
+/**
+ * 공유한 지식을 AI 가 대화에서 참고할지 바꾼다. 끄면 그 지식을 반영한 답변은 다음에 열 때 조용히 다시 쓰이고,
+ * 이어지는 대화에서도 그 지식이 넘어갔던 답변은 빠진다(chat.ts).
+ */
+export async function setAiReference(userId: string, noteId: string, input: { allowExternalAi: unknown }) {
+  if (typeof input.allowExternalAi !== "boolean") throw badRequest("AI 참고 허용 값이 올바르지 않습니다.");
+  const allow = input.allowExternalAi;
+  return withTx(async (tx) => {
+    const r = await tx.query("select team_id, author_id, allow_external_ai, origin, share_state from notes where id = $1 for update", [noteId]);
+    const n = r.rows[0];
+    if (!n || n.author_id !== userId || (n.origin === "memo" && n.share_state === "draft")) throw notFound();
+    await requireMembership(tx, userId, n.team_id);
+    if (n.allow_external_ai === allow) return { noteId, allowExternalAi: allow, invalidated: 0 };
+    await tx.query("update notes set allow_external_ai = $2, updated_at = now() where id = $1", [noteId, allow]);
+    const invalidated = allow ? 0 : await invalidateAdviceForNote(tx, noteId);
+    await audit(tx, userId, "note.ai_reference", noteId, { allow, invalidated });
+    return { noteId, allowExternalAi: allow, invalidated };
+  });
 }

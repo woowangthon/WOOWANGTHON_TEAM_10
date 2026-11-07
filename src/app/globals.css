@@ -105,3 +105,4 @@ input.pick { width: 20px; height: 20px; margin: 2px 4px 0 0; flex: none; }
   padding: 10px 0; border-top: 1px solid var(--line); margin-bottom: 8px; }
 .action-bar .muted { flex: 1; min-width: 120px; }
 .composer textarea { min-height: 160px; }
+.memo-ai { font-size: .85rem; color: var(--muted); margin: 6px 0; }
