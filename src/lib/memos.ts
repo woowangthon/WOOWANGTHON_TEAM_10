@@ -48,7 +48,7 @@ export async function listMemos(userId: string, teamId: string) {
        where nv.note_id = n.id and (case when n.author_id = $2 then true else nv.id = n.current_version_id end)
        order by nv.version desc limit 1
      ) v on true
-     where n.team_id = $1
+     where n.team_id = $1 and n.origin <> 'meeting' -- 회의록은 회의록 화면에서 따로 본다
        and (n.share_state = 'shared' or (n.author_id = $2 and (n.origin = 'summary' or n.share_state = 'withdrawn')))
      order by n.updated_at desc`,
     [teamId, userId],

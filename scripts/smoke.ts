@@ -238,6 +238,22 @@ async function main() {
     return `${r.ms}ms · 답변 ${r.data.answer.length}자 · 무관 질문 ${empty.ms}ms`;
   });
 
+  await softStep("회의록 → 대화에 반영 (출처 비노출)", async () => {
+    if (!ai.available) return "AI 미연결: 건너뜀";
+    const m = await A.call("POST", `/api/teams/${teamId}/meetings`, {
+      title: "데모 방식 회의", date: new Date().toISOString().slice(0, 10),
+      text: "결정한 것:\n- 본선 데모는 녹화 영상으로 한다 (실시간은 와이파이가 불안정해서 하지 않음)\n\n아직 정하지 못한 것:\n- 영상 길이",
+    });
+    expect(m.status === 200, `회의록 저장 실패 HTTP ${m.status} ${m.data.message ?? ""}`);
+    const list = await B.call("GET", `/api/teams/${teamId}/meetings`);
+    expect((list.data as Json[]).some((x) => x.title === "데모 방식 회의"), "팀원이 회의록을 보지 못함");
+    const r = await B.call("POST", `/api/tasks/${taskId}/chat`, { question: "본선 데모는 실시간으로 보여줄까, 녹화로 할까?", clientRequestId: crypto.randomUUID() });
+    expect(r.data.status === "ok" && r.data.answer, `답변 상태 ${r.data.status}`);
+    expect(/녹화/.test(r.data.answer), "회의에서 정한 내용(녹화)이 답변에 반영되지 않음");
+    expect(!/회의록|회의에서 정/.test(r.data.answer), "답변이 회의를 출처로 드러냄");
+    return `${r.ms}ms`;
+  });
+
   await softStep("공유 철회 → 대화 답변은 사유 표시 없이 다시 쓰임", async () => {
     if (!chatId) return "대화 없음: 건너뜀";
     const w = await A.call("POST", `/api/notes/${sharedNoteId}/withdraw`, {});

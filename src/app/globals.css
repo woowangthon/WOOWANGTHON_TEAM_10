@@ -106,3 +106,10 @@ input.pick { width: 20px; height: 20px; margin: 2px 4px 0 0; flex: none; }
 .action-bar .muted { flex: 1; min-width: 120px; }
 .composer textarea { min-height: 160px; }
 .memo-ai { font-size: .85rem; color: var(--muted); margin: 6px 0; }
+
+/* 회의록 */
+details.meeting summary { cursor: pointer; list-style: none; }
+details.meeting summary::-webkit-details-marker { display: none; }
+details.meeting summary::before { content: "▸ "; color: var(--muted); }
+details.meeting[open] summary::before { content: "▾ "; }
+details.meeting pre.raw { margin-top: 10px; }

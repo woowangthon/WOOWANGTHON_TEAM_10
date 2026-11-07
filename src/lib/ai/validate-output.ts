@@ -142,6 +142,9 @@ const SOURCE_PATTERNS: { re: RegExp; unlessQuestion?: RegExp }[] = [
   { re: /(제가|저는)\s*(알고\s*있는|가진|받은)\s*(정보|자료|내용)/ },
   { re: /참고(한|했던|할)\s*(정보|자료|내용)/ },
   { re: /\bknowledge\b|\bmemo\b|\bnotes?\b/i, unlessQuestion: /knowledge|memo|note/i },
+  { re: /회의록/, unlessQuestion: /회의/ },
+  { re: /회의\s*(에서|때|중에|결과|내용)\s*(정한|정했|결정|말한|나온|논의|합의|에\s*따르면|에\s*의하면|를\s*보면)/, unlessQuestion: /회의/ },
+  { re: /(지난|이전|앞선|최근)\s*회의/, unlessQuestion: /회의/ },
 ];
 
 /** 답변에서 출처를 드러내는 표현을 찾는다. 빈 배열이면 깨끗하다. */

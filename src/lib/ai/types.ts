@@ -15,7 +15,14 @@ export type TaskContext = {
 
 export type RestateInput = { rawText: string };
 
-export type CandidateForAi = { ref: string; text: string; summary: string | null; conditions: string[] };
+export type CandidateForAi = {
+  ref: string;
+  text: string;
+  summary: string | null;
+  conditions: string[];
+  /** 회의 기록이면 제목·날짜를 붙인다 (대화에서 개인 생각보다, 오래된 회의보다 최근 회의를 우선하게) */
+  meeting?: { title: string; date: string } | null;
+};
 
 export type Stance = "support" | "caution" | "objection" | "unclear";
 

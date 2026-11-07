@@ -220,13 +220,14 @@ export async function confirmVersion(
 /** 확인된 버전을 팀에 공유한다. */
 export async function shareNote(userId: string, noteId: string, versionId: string) {
   return withTx(async (tx) => {
-    await lockOwnNote(tx, userId, noteId);
+    const note = await lockOwnNote(tx, userId, noteId);
     const version = await getVersionOf(tx, noteId, versionId);
     const latest = await latestVersion(tx, noteId);
     if (latest.id !== version.id) throw conflict("최신 버전만 공유할 수 있습니다.");
     if (version.intent_state === "unconfirmed") throw conflict("작성자가 의도를 확인한 버전만 공유할 수 있습니다.");
+    const body = buildSearchText(version.raw_text, version.restated);
     await tx.query("update note_versions set search_text = $1, index_state = 'ready' where id = $2", [
-      buildSearchText(version.raw_text, version.restated),
+      note.title ? `${note.title}\n${body}` : body, // 회의록은 제목으로도 찾는다
       versionId,
     ]);
     await tx.query(

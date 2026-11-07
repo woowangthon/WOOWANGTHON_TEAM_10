@@ -26,6 +26,8 @@ const MAX_KNOWLEDGE = 30;
 /** 이어서 건넬 이전 대화 턴 수 */
 const HISTORY_TURNS = 6;
 const MAX_QUESTION = 2000;
+/** 회의록 하나를 모델에 건넬 때의 최대 길이 */
+const MAX_MEETING_CHARS = 6000;
 /** 한 번 열 때 다시 쓸 최대 답변 수 (나머지는 다음 요청에서) */
 const REFRESH_BATCH = 3;
 
@@ -88,7 +90,13 @@ async function answer(userId: string, task: TaskRow, requestId: string, question
       ? await recordInputs(requestId, task.team_id, found)
       : (await db.query("update advice_requests set input_version_ids = '{}', candidate_count = 0 where id = $1", [requestId]), []);
     const byRef = new Map<string, Candidate>(live.map((c, i) => [`N${i + 1}`, c]));
-    const knowledge: CandidateForAi[] = [...byRef].map(([ref, c]) => ({ ref, text: c.rawText, summary: c.summary, conditions: c.conditions }));
+    const knowledge: CandidateForAi[] = [...byRef].map(([ref, c]) => ({
+      ref,
+      text: c.origin === "meeting" ? clip(c.rawText, MAX_MEETING_CHARS) : c.rawText,
+      summary: c.summary,
+      conditions: c.conditions,
+      meeting: c.origin === "meeting" ? { title: c.title ?? "", date: c.meetingDate ?? "" } : null,
+    }));
 
     const out = await generate(provider, { project, history, knowledge, question }, new Set(byRef.keys()));
     const usedIds = out.used.map((r) => byRef.get(r)!.versionId);

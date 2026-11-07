@@ -7,7 +7,7 @@ export type TeamInfo = { id: string; name: string; myRole: string; members: { id
 export type AiConfig = { provider: string; available: boolean; fake: boolean };
 
 /** 팀 화면 공통 머리: 팀 이름, 대화 / 메모 보기 전환, 팀 정보(팀원·초대 코드), 로그아웃 */
-export function TeamHeader({ teamId, active, onLoaded }: { teamId: string; active: "chat" | "memos"; onLoaded?: (t: TeamInfo) => void }) {
+export function TeamHeader({ teamId, active, onLoaded }: { teamId: string; active: "chat" | "memos" | "meetings"; onLoaded?: (t: TeamInfo) => void }) {
   const [team, setTeam] = useState<TeamInfo | null>(null);
   const [invite, setInvite] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -40,6 +40,7 @@ export function TeamHeader({ teamId, active, onLoaded }: { teamId: string; activ
       <nav className="tabs" aria-label="팀 메뉴">
         <a href={`/teams/${teamId}`} className={active === "chat" ? "on" : ""} aria-current={active === "chat" ? "page" : undefined}>대화</a>
         <a href={`/teams/${teamId}/memos`} className={active === "memos" ? "on" : ""} aria-current={active === "memos" ? "page" : undefined}>메모 보기</a>
+        <a href={`/teams/${teamId}/meetings`} className={active === "meetings" ? "on" : ""} aria-current={active === "meetings" ? "page" : undefined}>회의록</a>
       </nav>
       {team && (
         <details className="team-info">
