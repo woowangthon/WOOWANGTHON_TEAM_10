@@ -4,7 +4,8 @@
 //   npm run smoke -- --url=https://<프로젝트>.vercel.app
 //   npm run smoke -- --url=http://localhost:3000
 //
-// 시험용 계정 2~3개를 만든다(이메일 smoke+<시각>@example.invalid). 끝나면 팀을 떠난다.
+// 시험용 계정 2~3개를 만든다(이메일 smoke+<시각>@example.invalid). 끝나면 회원 탈퇴로 계정과 자료를 모두 지운다
+// (--keep 을 붙이면 남긴다). 탈퇴 기능 자체도 여기서 점검한다.
 // 프록시 뒤(클라우드 세션)에서는 NODE_USE_ENV_PROXY=1 을 붙인다.
 
 type Json = Record<string, any>;
@@ -23,6 +24,12 @@ class Client {
   private cookies = new Map<string, string>();
   constructor(who: string) {
     this.who = who;
+  }
+  /** 지금 쿠키를 복사한 새 클라이언트 (탈퇴 뒤 옛 쿠키가 거부되는지 보려고) */
+  clone(who: string): Client {
+    const c = new Client(who);
+    for (const [k, v] of this.cookies) c.cookies.set(k, v);
+    return c;
   }
 
   async call<T = Json>(method: string, path: string, body?: unknown): Promise<{ status: number; data: T; headers: Headers; ms: number }> {
@@ -215,10 +222,44 @@ async function main() {
     expect(x.status === 403 || x.status === 401, `외부 출처 요청이 ${x.status} 로 응답 (403 여야 함)`);
   });
 
-  if (args.get("keep") !== "true") {
-    await softStep("정리: 시험 계정 팀 떠나기", async () => {
-      await A.call("POST", `/api/teams/${teamId}/leave`, {});
-      await B.call("POST", `/api/teams/${teamId}/leave`, {});
+  const keep = args.get("keep") === "true";
+  const deleted = new Set<Client>();
+  if (!keep) {
+    await step("회원 탈퇴 → 계정·메모 삭제", async () => {
+      const wrong = await A.call("DELETE", "/api/auth/me", { password: "wrong-password-0000" });
+      expect(wrong.status === 403, `틀린 비밀번호로 탈퇴가 ${wrong.status} 로 응답 (403 여야 함)`);
+      const oldCookie = A.clone("A-old");
+      const r = await A.call("DELETE", "/api/auth/me", { password: pw });
+      expect(r.status === 200 && r.data.deleted === true, `탈퇴 실패 HTTP ${r.status} ${r.data.message ?? ""}`);
+      deleted.add(A);
+      const me = await oldCookie.call("GET", "/api/auth/me");
+      expect(me.status === 401, `탈퇴한 계정의 옛 쿠키가 ${me.status} 로 응답 (401 여야 함)`);
+      const login = await A.call("POST", "/api/auth/login", { email: `smoke+a${TAG}@example.invalid`, password: pw });
+      expect(login.status === 401, `탈퇴한 계정으로 로그인이 ${login.status} 로 응답`);
+      const n = await B.call("GET", `/api/notes/${note2.id}`);
+      expect(n.status === 404, `탈퇴자의 공유 메모가 ${n.status} 로 응답 (지워져야 함)`);
+      const team = await B.call("GET", `/api/teams/${teamId}`);
+      expect(team.status === 200, `남은 팀원이 팀을 못 봄 HTTP ${team.status}`);
+      return `메모 ${r.data.notesDeleted}개 삭제, 팀장 승계`;
+    });
+  }
+
+  // 앞 단계가 실패했어도 만든 시험 계정은 지운다
+  if (!keep) {
+    const started = Date.now();
+    const left: string[] = [];
+    for (const c of [A, B, C]) {
+      if (deleted.has(c)) continue;
+      const me = await c.call("GET", "/api/auth/me").catch(() => null);
+      if (me?.status !== 200) continue; // 가입 전에 멈췄거나 이미 지워짐
+      const r = await c.call("DELETE", "/api/auth/me", { password: pw }).catch(() => null);
+      if (r?.status !== 200) left.push(c.who);
+    }
+    results.push({
+      name: "정리: 시험 계정 탈퇴",
+      status: left.length ? "warn" : "pass",
+      note: left.length ? `지우지 못한 계정: ${left.join(", ")}` : "",
+      ms: Date.now() - started,
     });
   }
 
@@ -231,7 +272,7 @@ async function main() {
     console.log(`실패 ${failed.length}건. 위 메시지와 서버 로그(Vercel → Logs)를 확인하세요.`);
     process.exitCode = 1;
   } else {
-    console.log(`배포 점검 통과 (${results.length}단계${warned.length ? `, 경고 ${warned.length}건` : ""}). 시험 계정: smoke+a${TAG}@example.invalid 등`);
+    console.log(`배포 점검 통과 (${results.length}단계${warned.length ? `, 경고 ${warned.length}건` : ""}).${keep ? ` 시험 계정: smoke+a${TAG}@example.invalid 등` : " 시험 계정은 탈퇴 처리했습니다."}`);
   }
 }
 

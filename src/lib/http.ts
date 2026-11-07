@@ -5,12 +5,16 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { readSession, SESSION_COOKIE } from "./auth.ts";
+import { getPool } from "./db.ts";
 import { AppError, badRequest, forbidden, unauthorized } from "./errors.ts";
 
 export async function currentUserId(): Promise<string> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const userId = readSession(token);
   if (!userId) throw unauthorized();
+  // 서명이 맞아도 탈퇴한 계정의 쿠키는 받지 않는다 (쿠키는 기기에 7일간 남을 수 있다)
+  const r = await getPool().query("select 1 from users where id = $1", [userId]);
+  if (!r.rowCount) throw unauthorized();
   return userId;
 }
 

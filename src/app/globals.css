@@ -54,3 +54,8 @@ details.ev blockquote { margin: 6px 0; padding: 6px 10px; border-left: 3px solid
 mark { background: var(--banner-bg); color: var(--banner-fg); padding: 0 2px; border-radius: 3px; }
 button.on { outline: 2px solid var(--accent); }
 .small { font-size: .85rem; padding: 5px 10px; }
+
+/* 개인정보 안내 (가입 화면) */
+details.notice { font-size: .88rem; color: var(--muted); margin: 4px 0 10px; }
+details.notice summary { cursor: pointer; color: var(--accent); }
+details.notice ul { margin: 6px 0 0; padding-left: 18px; } details.notice li { margin: 3px 0; }

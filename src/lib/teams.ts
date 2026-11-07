@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { PoolClient } from "pg";
 import { requireMembership } from "./access.ts";
 import { audit, getPool, withTx } from "./db.ts";
 import { notFound } from "./errors.ts";
@@ -32,40 +33,46 @@ export async function joinTeam(userId: string, codeInput: unknown) {
   });
 }
 
+/** 팀 나가기의 본체 (트랜잭션 안에서). 회원 탈퇴도 이것을 써서 팀장 승계 규칙을 똑같이 따른다. */
+export async function leaveTeamInTx(tx: PoolClient, userId: string, teamId: string) {
+  // 같은 팀의 동시 탈퇴가 꼬이지 않게 팀 행을 잠근다
+  const t = await tx.query("select id from teams where id = $1 for update", [teamId]);
+  if (!t.rowCount) throw notFound();
+  const me = await tx.query(
+    "select role from memberships where team_id = $1 and user_id = $2 and status = 'active'",
+    [teamId, userId],
+  );
+  if (!me.rowCount) throw notFound();
+  await tx.query("update memberships set status = 'left' where team_id = $1 and user_id = $2", [teamId, userId]);
+
+  let promoted: { userId: string; displayName: string } | null = null;
+  if (me.rows[0].role === "lead") {
+    const leads = await tx.query(
+      "select 1 from memberships where team_id = $1 and status = 'active' and role = 'lead' limit 1",
+      [teamId],
+    );
+    if (!leads.rowCount) {
+      const next = await tx.query(
+        `update memberships m set role = 'lead'
+         from (select user_id from memberships where team_id = $1 and status = 'active'
+               order by joined_at asc, user_id asc limit 1) pick
+         where m.team_id = $1 and m.user_id = pick.user_id
+         returning m.user_id, (select display_name from users where id = m.user_id) as display_name`,
+        [teamId],
+      );
+      if (next.rowCount) promoted = { userId: next.rows[0].user_id, displayName: next.rows[0].display_name };
+    }
+  }
+  return promoted;
+}
+
 /**
  * 팀 나가기. 유일한 팀장이 나가면 가장 오래된 팀원에게 팀장을 넘긴다 (팀이 팀장 없이 남지 않게).
  * 나간 뒤에는 팀 자료를 볼 수 없지만, 이미 공유한 메모는 팀에 남는다 (원안 §8.1: 사전 합의 사항).
  */
 export async function leaveTeam(userId: string, teamId: string) {
   return withTx(async (tx) => {
-    // 같은 팀의 동시 탈퇴가 꼬이지 않게 팀 행을 잠근다
-    const t = await tx.query("select id from teams where id = $1 for update", [teamId]);
-    if (!t.rowCount) throw notFound();
-    const me = await tx.query(
-      "select role from memberships where team_id = $1 and user_id = $2 and status = 'active'",
-      [teamId, userId],
-    );
-    if (!me.rowCount) throw notFound();
-    await tx.query("update memberships set status = 'left' where team_id = $1 and user_id = $2", [teamId, userId]);
-
-    let promoted: { userId: string; displayName: string } | null = null;
-    if (me.rows[0].role === "lead") {
-      const leads = await tx.query(
-        "select 1 from memberships where team_id = $1 and status = 'active' and role = 'lead' limit 1",
-        [teamId],
-      );
-      if (!leads.rowCount) {
-        const next = await tx.query(
-          `update memberships m set role = 'lead'
-           from (select user_id from memberships where team_id = $1 and status = 'active'
-                 order by joined_at asc, user_id asc limit 1) pick
-           where m.team_id = $1 and m.user_id = pick.user_id
-           returning m.user_id, (select display_name from users where id = m.user_id) as display_name`,
-          [teamId],
-        );
-        if (next.rowCount) promoted = { userId: next.rows[0].user_id, displayName: next.rows[0].display_name };
-      }
-    }
+    const promoted = await leaveTeamInTx(tx, userId, teamId);
     await audit(tx, userId, "team.leave", teamId, { promoted: promoted?.userId ?? null });
     return { left: true, promoted: promoted ? { displayName: promoted.displayName } : null };
   });
