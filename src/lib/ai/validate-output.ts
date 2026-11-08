@@ -143,6 +143,10 @@ const SOURCE_PATTERNS: { re: RegExp; unlessQuestion?: RegExp }[] = [
   { re: /참고(한|했던|할)\s*(정보|자료|내용)/ },
   { re: /\bknowledge\b|\bmemo\b|\bnotes?\b/i, unlessQuestion: /knowledge|memo|note/i },
   { re: /회의록/, unlessQuestion: /회의/ },
+  { re: /(비공개|공개(되지|하지)\s*않은|숨겨진|숨긴|따로\s*받은|나(에게|한테)만\s*알려\s*준|팀원(들)?에게\s*(는\s*)?보이지\s*않는)\s*(메모|정보|내용|자료|지식|기록)/ },
+  { re: /원문(을|은)?\s*(그대로)?\s*(보여|알려|공개|옮겨|전달)/, unlessQuestion: /원문/ },
+  { re: /(개인적으로|따로|몰래|비밀(로|리에)?)\s*(알려\s*준|알려준|전달한|남긴|공유한|말해\s*준)/ },
+  { re: /(공개|공유)(할|해\s*드릴|해\s*줄)\s*수\s*(는\s*|가\s*)?없/ },
   { re: /회의\s*(에서|때|중에|결과|내용)\s*(정한|정했|결정|말한|나온|논의|합의|에\s*따르면|에\s*의하면|를\s*보면)/, unlessQuestion: /회의/ },
   { re: /(지난|이전|앞선|최근)\s*회의/, unlessQuestion: /회의/ },
 ];

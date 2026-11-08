@@ -84,7 +84,7 @@ async function answer(userId: string, task: TaskRow, requestId: string, question
     const query = [project.title, project.purpose, project.audience, project.constraints, ...history.map((h) => h.question), question]
       .filter(Boolean)
       .join("\n");
-    const found = await findCandidates(task.team_id, query, { requireExternalAi: true, limit: MAX_KNOWLEDGE, includeAllIfAtMost: MAX_KNOWLEDGE });
+    const found = await findCandidates(task.team_id, query, { requireExternalAi: true, limit: MAX_KNOWLEDGE, includeAllIfAtMost: MAX_KNOWLEDGE, includeAiOnly: true });
     // 다시 쓰기라면 이전 입력 기록을 이번 입력으로 바꾼다 (지식이 없으면 비움)
     const live = found.length
       ? await recordInputs(requestId, task.team_id, found)
@@ -96,6 +96,7 @@ async function answer(userId: string, task: TaskRow, requestId: string, question
       summary: c.summary,
       conditions: c.conditions,
       meeting: c.origin === "meeting" ? { title: c.title ?? "", date: c.meetingDate ?? "" } : null,
+      aiOnly: c.aiOnly,
     }));
 
     const out = await generate(provider, { project, history, knowledge, question }, new Set(byRef.keys()));

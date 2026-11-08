@@ -1,5 +1,6 @@
 "use client";
-// 메모 보기: 내 메모(나만 봄)를 골라 AI 로 정리 → 직접 고침 → 팀에 공유. 아래에는 팀에 공유된 메모.
+// 메모 보기: 내 메모(나만 봄)를 골라 AI 로 정리 → 직접 고침 → 공유.
+// 공유할 때 범위를 고른다: '팀에 공유'(팀원도 보고 AI 도 참고) 또는 'AI만 참고'(팀원은 못 보고 AI 만 대화할 때 참고).
 import { use, useEffect, useState } from "react";
 import { api } from "../../../api-client.ts";
 import { MEMO_SAVED_EVENT } from "../../../memo-fab.tsx";
@@ -8,7 +9,7 @@ import { AiBanner, TeamHeader, useAiConfig } from "../../team-header.tsx";
 type MyMemo = { id: string; versionId: string; text: string; createdAt: string; inShared: boolean };
 type SharedMemo = {
   id: string; versionId: string; text: string; state: "shared" | "withdrawn" | "draft"; isAuthor: boolean;
-  authorName: string; allowExternalAi: boolean; updatedAt: string;
+  authorName: string; allowExternalAi: boolean; visibility: "team" | "ai_only"; updatedAt: string;
 };
 type Memos = { mine: MyMemo[]; shared: SharedMemo[] };
 type Draft = { text: string; sources: string[]; warnings: string[]; viaAi: boolean; allowAi: boolean };
@@ -57,11 +58,15 @@ export default function MemosPage({ params }: { params: Promise<{ teamId: string
     setError("");
     setDraft({ text: pickedMemos.map((m) => m.text).join("\n"), sources: pickedMemos.map((m) => m.id), warnings: [], viaAi: false, allowAi: true });
   };
-  const share = () => draft && run("share", async () => {
-    await api(`/api/teams/${teamId}/shared`, { body: { text: draft.text, sourceNoteIds: draft.sources, allowExternalAi: draft.allowAi } });
+  const share = (visibility: "team" | "ai_only") => draft && run(`share-${visibility}`, async () => {
+    await api(`/api/teams/${teamId}/shared`, { body: { text: draft.text, sourceNoteIds: draft.sources, allowExternalAi: visibility === "ai_only" || draft.allowAi, visibility } });
     setDraft(null); setPicked(new Set());
-    setNotice("팀에 공유했습니다. 팀원이 볼 수 있고, AI가 대화할 때 참고합니다.");
+    setNotice(visibility === "ai_only"
+      ? "AI만 참고하도록 저장했습니다. 팀원에게는 보이지 않고, AI가 대화할 때 참고합니다."
+      : "팀에 공유했습니다. 팀원이 볼 수 있고, AI가 대화할 때 참고합니다.");
   });
+  const teamShared = (data?.shared ?? []).filter((x) => x.visibility === "team");
+  const aiOnly = (data?.shared ?? []).filter((x) => x.visibility === "ai_only");
 
   return (
     <main>
@@ -87,18 +92,27 @@ export default function MemosPage({ params }: { params: Promise<{ teamId: string
       {draft && (
         <div className="card composer">
           <h3 style={{ marginTop: 0 }}>{draft.viaAi ? "AI가 정리한 내용" : "직접 정리"} <span className="muted">· 메모 {draft.sources.length}개 바탕</span></h3>
-          <p className="muted">불필요한 부분은 지우고 고친 뒤 공유하세요. 여기 적힌 그대로 팀에 공유됩니다.</p>
+          <p className="muted">불필요한 부분은 지우고 고친 뒤 공유 범위를 고르세요. 여기 적힌 그대로 저장됩니다.</p>
           <textarea aria-label="공유할 내용" rows={8} maxLength={2000} value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} />
           {draft.warnings.map((w, i) => <p key={i} className="warn">⚠ {w}</p>)}
           <details className="ev">
             <summary>바탕이 된 내 메모 보기</summary>
             {(data?.mine ?? []).filter((m) => draft.sources.includes(m.id)).map((m) => <blockquote key={m.id}>{m.text}</blockquote>)}
           </details>
-          <label className="check" style={{ margin: "8px 0" }}>
-            <input type="checkbox" checked={draft.allowAi} onChange={(e) => setDraft({ ...draft, allowAi: e.target.checked })} />
-            AI가 대화할 때 이 내용을 참고해도 됨</label>
+          <div className="share-choice">
+            <div>
+              <button className="primary" disabled={!draft.text.trim() || !!busy} onClick={() => share("team")}>{busy === "share-team" ? "공유 중…" : "팀에 공유"}</button>
+              <p className="muted">팀원도 보고, AI도 대화할 때 참고합니다.</p>
+              <label className="check" style={{ fontSize: ".85rem" }}>
+                <input type="checkbox" checked={draft.allowAi} onChange={(e) => setDraft({ ...draft, allowAi: e.target.checked })} />
+                AI도 참고 (끄면 팀원만 봄)</label>
+            </div>
+            <div>
+              <button className="ai-only-btn" disabled={!draft.text.trim() || !!busy} onClick={() => share("ai_only")}>{busy === "share-ai_only" ? "저장 중…" : "AI만 참고"}</button>
+              <p className="muted">팀원에게는 보이지 않습니다. AI만 대화할 때 참고해 팀원의 질문에 반영합니다.</p>
+            </div>
+          </div>
           <div className="row">
-            <button className="primary" disabled={!draft.text.trim() || busy === "share"} onClick={share}>{busy === "share" ? "공유 중…" : "확인했어요, 팀에 공유"}</button>
             {draft.viaAi && <button disabled={busy === "summarize"} onClick={summarize}>다시 정리</button>}
             <button onClick={() => setDraft(null)}>취소</button>
           </div>
@@ -106,8 +120,16 @@ export default function MemosPage({ params }: { params: Promise<{ teamId: string
       )}
 
       <h2>팀에 공유된 메모</h2>
-      {data?.shared.length === 0 && <p className="muted">아직 공유된 메모가 없습니다.</p>}
-      {data?.shared.map((s) => <SharedCard key={s.id} s={s} run={run} />)}
+      {data && teamShared.length === 0 && <p className="muted">아직 공유된 메모가 없습니다.</p>}
+      {teamShared.map((s) => <SharedCard key={s.id} s={s} run={run} />)}
+
+      {aiOnly.length > 0 && (
+        <>
+          <h2>AI만 참고하는 내 메모 <span className="muted">· 팀원에게 보이지 않음</span></h2>
+          <p className="muted">AI는 팀원이 질문할 때 이 내용을 참고해 답하지만, 원문을 그대로 옮기지는 않습니다.</p>
+          {aiOnly.map((s) => <SharedCard key={s.id} s={s} run={run} />)}
+        </>
+      )}
     </main>
   );
 }
@@ -173,7 +195,7 @@ function SharedCard({ s, run }: { s: SharedMemo; run: Run }) {
       ) : (
         <pre className="raw">{s.text}</pre>
       )}
-      {s.isAuthor && !editing && (
+      {s.isAuthor && !editing && s.visibility === "team" && (
         <label className="check memo-ai">
           <input type="checkbox" checked={s.allowExternalAi}
             onChange={(e) => run("ai", () => api(`/api/notes/${s.id}/ai`, { method: "PATCH", body: { allowExternalAi: e.target.checked } }))} />
@@ -188,6 +210,11 @@ function SharedCard({ s, run }: { s: SharedMemo; run: Run }) {
           {s.state === "withdrawn" && (
             <button className="small" onClick={() => run("reshare", () => api(`/api/notes/${s.id}/versions/${s.versionId}/share`, { body: {} }))}>다시 공유</button>
           )}
+          {s.visibility === "team"
+            ? <button className="small" onClick={() => confirm("팀원 화면에서 이 메모를 숨기고 AI만 참고하게 할까요? 이미 본 팀원의 기억까지 지울 수는 없습니다.") &&
+                run("vis", () => api(`/api/notes/${s.id}/visibility`, { method: "PATCH", body: { visibility: "ai_only" } }))}>팀원에게 숨기기</button>
+            : <button className="small" onClick={() => confirm("이 메모를 팀원에게도 보이게 할까요?") &&
+                run("vis", () => api(`/api/notes/${s.id}/visibility`, { method: "PATCH", body: { visibility: "team" } }))}>팀원에게 공개</button>}
           <button className="small danger" onClick={() => confirm("삭제하면 되돌릴 수 없습니다. 삭제할까요?") &&
             run("delete", () => api(`/api/notes/${s.id}`, { method: "DELETE" }))}>삭제</button>
         </div>

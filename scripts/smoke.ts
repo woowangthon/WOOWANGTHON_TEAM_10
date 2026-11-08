@@ -222,6 +222,24 @@ async function main() {
     return note;
   });
 
+  await softStep("'AI만 참고' 메모: 팀원은 못 보고 AI 는 참고", async () => {
+    const hidden = "본선 리허설은 금요일 저녁 7시에 실험실 3층에서 한다";
+    const sh = await A.call("POST", `/api/teams/${teamId}/shared`, { text: hidden, visibility: "ai_only" });
+    expect(sh.status === 200, `저장 실패 HTTP ${sh.status} ${sh.data.message ?? ""}`);
+    const seen = await B.call("GET", `/api/teams/${teamId}/memos`);
+    expect(!JSON.stringify(seen.data).includes("리허설"), "'AI만 참고' 메모가 다른 팀원에게 보임");
+    const direct = await B.call("GET", `/api/notes/${sh.data.noteId}`);
+    expect(direct.status === 404, `다른 팀원이 직접 열면 ${direct.status} (404 여야 함)`);
+    const own = await A.call("GET", `/api/teams/${teamId}/memos`);
+    expect(JSON.stringify(own.data).includes("리허설"), "작성자에게 보이지 않음");
+    if (!ai.available) return "AI 미연결: 대화 확인 생략";
+    const r = await B.call("POST", `/api/tasks/${taskId}/chat`, { question: "본선 리허설은 언제 어디서 해?", clientRequestId: crypto.randomUUID() });
+    expect(r.data.status === "ok" && r.data.answer, `답변 상태 ${r.data.status}`);
+    expect(/금요일|7시|3층/.test(r.data.answer), "AI 가 'AI만 참고' 메모를 반영하지 않음");
+    expect(!r.data.answer.includes(hidden), "AI 가 원문을 그대로 옮김");
+    return `${r.ms}ms`;
+  });
+
   await step("B 프로젝트 대화 (항상 답함, 메모 출처 비노출)", async () => {
     if (!ai.available) return "AI 미연결: 건너뜀";
     const r = await B.call("POST", `/api/tasks/${taskId}/chat`, { question: "실험 그래프 범례에는 무엇을 적어야 할까?", clientRequestId: crypto.randomUUID() });
@@ -232,7 +250,8 @@ async function main() {
     const empty = await B.call("POST", `/api/tasks/${taskId}/chat`, { question: "점심 메뉴 추천해 줘", clientRequestId: crypto.randomUUID() });
     expect(empty.data.status === "ok" && empty.data.answer, "관련 팀 지식이 없는 질문에 답하지 않음");
     const list = await B.call("GET", `/api/tasks/${taskId}/chat`);
-    expect(Array.isArray(list.data) && list.data.length === 2, `대화 기록 ${list.data?.length}건 (2건이어야 함)`);
+    const ids = Array.isArray(list.data) ? (list.data as Json[]).map((t) => t.id) : [];
+    expect(ids.includes(r.data.id) && ids.includes(empty.data.id), `대화 기록에 방금 나눈 대화가 없음 (${ids.length}건)`);
     const peek = await A.call("GET", `/api/tasks/${taskId}/chat`);
     expect(Array.isArray(peek.data) && peek.data.length === 0, "다른 팀원의 대화가 보임");
     return `${r.ms}ms · 답변 ${r.data.answer.length}자 · 무관 질문 ${empty.ms}ms`;
