@@ -135,3 +135,4 @@ details.sources { margin-top: 8px; font-size: .82rem; border-top: 1px dashed var
 details.sources summary { cursor: pointer; color: var(--accent); }
 .source { margin: 6px 0; }
 .source-text { white-space: pre-wrap; border-left: 3px solid var(--line); padding-left: 8px; margin-top: 2px; }
+.link-btn { border: none; background: none; color: var(--accent); padding: 2px 0; }

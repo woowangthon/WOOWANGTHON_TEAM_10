@@ -37,9 +37,11 @@ export default function MemosPage({ params }: { params: Promise<{ teamId: string
     return () => window.removeEventListener(MEMO_SAVED_EVENT, onSaved);
   }, [teamId]);
 
-  const run = async (label: string, fn: () => Promise<unknown>) => {
+  // 성공했는지를 돌려준다. 편집창은 성공했을 때만 닫아야 실패 시 쓴 내용이 남는다.
+  const run = async (label: string, fn: () => Promise<unknown>): Promise<boolean> => {
     setBusy(label); setError(""); setNotice("");
-    try { await fn(); await load(); } catch (e) { setError((e as Error).message); }
+    try { await fn(); await load(); return true; }
+    catch (e) { setError((e as Error).message); return false; }
     finally { setBusy(null); }
   };
 
@@ -109,7 +111,7 @@ export default function MemosPage({ params }: { params: Promise<{ teamId: string
             </div>
             <div>
               <button className="ai-only-btn" disabled={!draft.text.trim() || !!busy} onClick={() => share("ai_only")}>{busy === "share-ai_only" ? "저장 중…" : "AI만 참고"}</button>
-              <p className="muted">팀원에게는 보이지 않습니다. AI만 대화할 때 참고해 팀원의 질문에 반영합니다.</p>
+              <p className="muted">원문과 출처는 팀원에게 보이지 않습니다. 다만 AI가 팀원의 질문에 답할 때 <b>내용은 반영될 수 있습니다</b>(예: 일정·장소). 팀원이 알면 안 되는 비밀은 적지 마세요.</p>
             </div>
           </div>
           <div className="row">
@@ -126,7 +128,7 @@ export default function MemosPage({ params }: { params: Promise<{ teamId: string
       {aiOnly.length > 0 && (
         <>
           <h2>AI만 참고하는 내 메모 <span className="muted">· 팀원에게 보이지 않음</span></h2>
-          <p className="muted">AI는 팀원이 질문할 때 이 내용을 참고해 답하지만, 원문을 그대로 옮기지는 않습니다.</p>
+          <p className="muted">원문과 출처는 팀원에게 보이지 않지만, AI가 팀원의 질문에 답할 때 필요한 내용(일정·장소 등)은 답변에 반영될 수 있습니다. AI에게 원문 표현과 금액·개인 사정 같은 세부는 빼도록 지시하지만, 이는 서버가 보장하는 것이 아닙니다. 팀원이 알면 안 되는 비밀은 적지 마세요.</p>
           {aiOnly.map((s) => <SharedCard key={s.id} s={s} run={run} />)}
         </>
       )}
@@ -134,7 +136,7 @@ export default function MemosPage({ params }: { params: Promise<{ teamId: string
   );
 }
 
-type Run = (label: string, fn: () => Promise<unknown>) => Promise<void>;
+type Run = (label: string, fn: () => Promise<unknown>) => Promise<boolean>;
 
 function MyMemoCard({ m, checked, onToggle, run, disabled }: { m: MyMemo; checked: boolean; onToggle: () => void; run: Run; disabled: boolean }) {
   const [editing, setEditing] = useState(false);
@@ -149,7 +151,7 @@ function MyMemoCard({ m, checked, onToggle, run, disabled }: { m: MyMemo; checke
               <textarea aria-label="메모 수정" value={text} maxLength={2000} onChange={(e) => setText(e.target.value)} />
               <div className="row" style={{ marginTop: 6 }}>
                 <button className="primary small" disabled={!text.trim() || text === m.text}
-                  onClick={() => run("edit", () => api(`/api/notes/${m.id}`, { method: "PATCH", body: { rawText: text } })).then(() => setEditing(false))}>저장</button>
+                  onClick={() => run("edit", () => api(`/api/notes/${m.id}`, { method: "PATCH", body: { rawText: text } })).then((ok) => ok && setEditing(false))}>저장</button>
                 <button className="small" onClick={() => { setEditing(false); setText(m.text); }}>취소</button>
               </div>
             </>
@@ -188,7 +190,7 @@ function SharedCard({ s, run }: { s: SharedMemo; run: Run }) {
           <p className="muted">저장하면 고친 내용으로 다시 공유됩니다.</p>
           <div className="row">
             <button className="primary small" disabled={!text.trim() || text === s.text}
-              onClick={() => run("revise", () => api(`/api/notes/${s.id}/revise`, { body: { text } })).then(() => setEditing(false))}>저장하고 다시 공유</button>
+              onClick={() => run("revise", () => api(`/api/notes/${s.id}/revise`, { body: { text } })).then((ok) => ok && setEditing(false))}>저장하고 다시 공유</button>
             <button className="small" onClick={() => { setEditing(false); setText(s.text); }}>취소</button>
           </div>
         </>

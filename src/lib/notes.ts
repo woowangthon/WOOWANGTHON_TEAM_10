@@ -90,37 +90,45 @@ const NOTE_VERSION_IDS = "(select coalesce(array_agg(id), '{}') from note_versio
 
 /**
  * 이 메모의 영향을 받은 조언 요청.
- *  - 조언(kind='advice'): 모델·화면에 넘긴 메모 전체(input_version_ids) 기준. 모델은 받은 메모 전체의 영향을 받을 수 있다.
- *  - 대화(kind='chat'): 모델이 답변에 반영했다고 밝힌 메모(evidence_version_ids) 기준. 작은 팀은 공유 메모를 매번 전부 건네므로,
- *    입력 기준으로 하면 메모 하나를 철회할 때마다 모든 대화가 사라진다. 대신 처리 중인 요청은 확정 직전에 반영 메모를 다시 확인한다.
+ *  - 조언(kind='advice'): 언제나 모델·화면에 넘긴 메모 전체(input_version_ids) 기준.
+ *  - 대화(kind='chat'), scope='used': 모델이 답변에 반영했다고 밝힌 메모(evidence_version_ids) 기준. 철회·수정·AI 참고 끄기·
+ *    범위 좁히기에 쓴다. 모델이 반영 사실을 빠뜨리면 그 답변은 화면에 남는다(한계). 대신 그 답변은 이어지는 대화에 다시
+ *    넘기지 않는다(chat.ts historyFor, 입력 기준).
+ *  - 대화(kind='chat'), scope='input': 그 메모가 모델에 **넘어간** 모든 답변. 삭제(개인정보)에 쓴다. 모델의 자기 보고에
+ *    기대지 않는 보수적인 기준이라, 작은 팀(공유 지식을 매번 전부 넘김)에서는 메모 하나를 지우면 그 뒤의 대화 답변 대부분이
+ *    지워지고 다음에 열 때 다시 쓰인다(모델 호출 비용이 든다).
  */
-const AFFECTED_BY_NOTE = `(
+type Scope = "used" | "input";
+const affectedBy = (scope: Scope) => `(
   (advice_requests.kind = 'advice' and advice_requests.input_version_ids && ${NOTE_VERSION_IDS})
-  or (advice_requests.kind = 'chat' and exists (
-        select 1 from advice_items ai where ai.request_id = advice_requests.id and ai.evidence_version_ids && ${NOTE_VERSION_IDS}))
+  or (advice_requests.kind = 'chat' and ${
+    scope === "input"
+      ? `advice_requests.input_version_ids && ${NOTE_VERSION_IDS}`
+      : `exists (select 1 from advice_items ai where ai.request_id = advice_requests.id and ai.evidence_version_ids && ${NOTE_VERSION_IDS})`
+  })
 )`;
 
 /**
  * 이 메모(어느 버전이든)를 모델·화면에 넘겼던 조언 요청을 무효화한다.
  * 모델은 받은 메모 전체의 영향을 받을 수 있으므로, 근거로 인용하지 않은 항목까지 요청 단위로 무효화한다.
  */
-export async function invalidateAdviceForNote(tx: Db, noteId: string): Promise<number> {
+export async function invalidateAdviceForNote(tx: Db, noteId: string, scope: Scope = "used"): Promise<number> {
   // 이 메모가 들어간 대화 기억(요약)은 바로 지운다. 다음 질문 때 그 내용 없이 다시 만든다(chat.ts memoryFor)
   await tx.query(`delete from chat_memories where input_version_ids && ${NOTE_VERSION_IDS}`, [noteId]);
   const r = await tx.query(
     `update advice_requests
      set status = 'invalidated', error = coalesce(error, 'source_changed'), finished_at = coalesce(finished_at, now())
-     where status in ('pending', 'ok') and ${AFFECTED_BY_NOTE}`,
+     where status in ('pending', 'ok') and ${affectedBy(scope)}`,
     [noteId],
   );
   return r.rowCount ?? 0;
 }
 
-/** 메모 삭제 시: 그 메모를 넘겼던 요청의 조언 본문·인용을 DB 에서 지운다. */
+/** 메모 삭제 시: 그 메모가 모델·화면에 넘어간 모든 요청의 답변 본문·인용을 DB 에서 지운다 (입력 기준, 보수적). */
 export async function purgeAdviceForNote(tx: Db, noteId: string): Promise<number> {
   const r = await tx.query(
     `update advice_items set body = '', quotes = '[]'::jsonb, purged = true
-     where request_id in (select id from advice_requests where ${AFFECTED_BY_NOTE})`,
+     where request_id in (select id from advice_requests where ${affectedBy("input")})`,
     [noteId],
   );
   return r.rowCount ?? 0;
@@ -279,7 +287,7 @@ export async function withdrawNote(userId: string, noteId: string) {
 export async function deleteNote(userId: string, noteId: string) {
   return withTx(async (tx) => {
     await lockOwnNote(tx, userId, noteId);
-    const invalidated = await invalidateAdviceForNote(tx, noteId);
+    const invalidated = await invalidateAdviceForNote(tx, noteId, "input");
     const purged = await purgeAdviceForNote(tx, noteId);
     await tx.query("delete from notes where id = $1", [noteId]);
     await audit(tx, userId, "note.delete", noteId, { invalidated, purged });

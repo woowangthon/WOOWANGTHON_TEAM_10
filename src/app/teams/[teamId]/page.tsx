@@ -228,14 +228,22 @@ function Answer({ t }: { t: Turn }) {
       {t.sources.length > 0 && (
         <details className="sources">
           <summary>참고한 팀 지식 {t.sources.length}개</summary>
-          {t.sources.map((s) => (
-            <div key={s.noteId} className="source">
-              <div className="muted">{s.kind === "meeting" ? `회의록 · ${s.title} (${fmtDay(s.date)})` : "팀원이 공유한 메모"}</div>
-              <div className="source-text">{s.text.length > 400 ? `${s.text.slice(0, 400)}…` : s.text}</div>
-            </div>
-          ))}
+          {t.sources.map((s) => <SourceCard key={s.noteId} s={s} />)}
         </details>
       )}
+    </div>
+  );
+}
+
+/** 출처 원문: 길면 앞부분만 보여주고 「전체 보기」로 펼친다 (회의록은 10,000자까지) */
+function SourceCard({ s }: { s: Source }) {
+  const [full, setFull] = useState(false);
+  const long = s.text.length > 400;
+  return (
+    <div className="source">
+      <div className="muted">{s.kind === "meeting" ? `회의록 · ${s.title} (${fmtDay(s.date)})` : "팀원이 공유한 메모"}</div>
+      <div className="source-text">{long && !full ? `${s.text.slice(0, 400)}…` : s.text}</div>
+      {long && <button className="small link-btn" onClick={() => setFull(!full)}>{full ? "접기" : `전체 보기 (${s.text.length.toLocaleString()}자)`}</button>}
     </div>
   );
 }

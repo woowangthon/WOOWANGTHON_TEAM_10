@@ -78,7 +78,7 @@ async function deleteAllNotes(tx: PoolClient, userId: string): Promise<number> {
     [userId],
   );
   for (const { id } of r.rows) {
-    await invalidateAdviceForNote(tx, id);
+    await invalidateAdviceForNote(tx, id, "input");
     await purgeAdviceForNote(tx, id);
   }
   if (r.rowCount) await tx.query("delete from notes where id = any($1::uuid[])", [r.rows.map((x) => x.id)]);

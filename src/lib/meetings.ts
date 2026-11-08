@@ -141,7 +141,7 @@ export async function manageMeeting(
       await tx.query("update notes set allow_external_ai = $2, updated_at = now() where id = $1", [noteId, input.allowExternalAi]);
       if (!input.allowExternalAi && n.allow_external_ai) invalidated = await invalidateAdviceForNote(tx, noteId);
     } else {
-      invalidated = await invalidateAdviceForNote(tx, noteId);
+      invalidated = await invalidateAdviceForNote(tx, noteId, "input");
       await purgeAdviceForNote(tx, noteId);
       await tx.query("delete from notes where id = $1", [noteId]);
     }
