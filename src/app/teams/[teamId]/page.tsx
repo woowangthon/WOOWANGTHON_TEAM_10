@@ -5,7 +5,8 @@ import { api } from "../../api-client.ts";
 import { AiBanner, TeamHeader, useAiConfig, type TeamInfo } from "../team-header.tsx";
 
 type Project = { id: string; title: string; purpose: string; audience: string; constraints: string; version: number };
-type Turn = { id: string; question: string; status: string; error: string | null; createdAt: string; answer: string | null; stale: boolean };
+type Source = { kind: "memo"; noteId: string; text: string } | { kind: "meeting"; noteId: string; title: string; date: string; text: string };
+type Turn = { id: string; question: string; status: string; error: string | null; createdAt: string; answer: string | null; stale: boolean; sources: Source[] };
 type ProjectForm = { title: string; purpose: string; audience: string; constraints: string };
 
 const EMPTY_FORM: ProjectForm = { title: "", purpose: "", audience: "", constraints: "" };
@@ -221,5 +222,25 @@ function Chat({ project, aiReady }: { project: Project; aiReady: boolean }) {
 function Answer({ t }: { t: Turn }) {
   if (t.status === "pending") return <div className="bubble ai muted">답변 작성 중…</div>;
   if (t.status !== "ok" || !t.answer) return <div className="bubble ai error">{ERROR_TEXT[t.error ?? "internal"] ?? ERROR_TEXT.internal}</div>;
-  return <div className="bubble ai">{t.answer}</div>;
+  return (
+    <div className="bubble ai">
+      {t.answer}
+      {t.sources.length > 0 && (
+        <details className="sources">
+          <summary>참고한 팀 지식 {t.sources.length}개</summary>
+          {t.sources.map((s) => (
+            <div key={s.noteId} className="source">
+              <div className="muted">{s.kind === "meeting" ? `회의록 · ${s.title} (${fmtDay(s.date)})` : "팀원이 공유한 메모"}</div>
+              <div className="source-text">{s.text.length > 400 ? `${s.text.slice(0, 400)}…` : s.text}</div>
+            </div>
+          ))}
+        </details>
+      )}
+    </div>
+  );
 }
+
+const fmtDay = (d: string) => {
+  const [, m, day] = d.split("-").map(Number);
+  return `${m}월 ${day}일`;
+};

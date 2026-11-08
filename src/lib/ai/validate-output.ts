@@ -131,44 +131,68 @@ export function validateChatOutput(raw: unknown, validRefs: ReadonlySet<string>)
 }
 
 // ---------- 출처 표현 검사 ----------
-// 답변에서 "팀 메모를 참고했다"는 신호가 되는 표현. 질문 자체에 그 낱말이 있으면(예: "메모 앱 추천해 줘") 검사하지 않는다.
-const SOURCE_PATTERNS: { re: RegExp; unlessQuestion?: RegExp }[] = [
-  { re: /메모/, unlessQuestion: /메모/ },
-  { re: /노트(에|를|에서|에\s*따르면)/, unlessQuestion: /노트/ },
-  { re: /팀\s*(지식|자료|기록)/ },
-  { re: /(공유|기록|정리|저장)(된|해\s*둔|해\s*두신|하신|한)\s*(내용|정보|자료|지식|기록|메모)/ },
-  { re: /(기록|자료|정보|내용|지식)(에|을|를)\s*(따르면|의하면|보면|보니|참고하면)/ },
-  { re: /팀원(이|들이|분들이|께서)?\s*(남긴|적은|쓴|공유한|말한|올린)/ },
-  { re: /(제가|저는)\s*(알고\s*있는|가진|받은)\s*(정보|자료|내용)/ },
-  { re: /참고(한|했던|할)\s*(정보|자료|내용)/ },
-  { re: /\bknowledge\b|\bmemo\b|\bnotes?\b/i, unlessQuestion: /knowledge|memo|note/i },
-  { re: /회의록/, unlessQuestion: /회의/ },
-  { re: /(비공개|공개(되지|하지)\s*않은|숨겨진|숨긴|따로\s*받은|나(에게|한테)만\s*알려\s*준|팀원(들)?에게\s*(는\s*)?보이지\s*않는)\s*(메모|정보|내용|자료|지식|기록)/ },
-  { re: /원문(을|은)?\s*(그대로)?\s*(보여|알려|공개|옮겨|전달)/, unlessQuestion: /원문/ },
-  { re: /(개인적으로|따로|몰래|비밀(로|리에)?)\s*(알려\s*준|알려준|전달한|남긴|공유한|말해\s*준)/ },
-  { re: /(공개|공유)(할|해\s*드릴|해\s*줄)\s*수\s*(는\s*|가\s*)?없/ },
-  { re: /회의\s*(에서|때|중에|결과|내용)\s*(정한|정했|결정|말한|나온|논의|합의|에\s*따르면|에\s*의하면|를\s*보면)/, unlessQuestion: /회의/ },
-  { re: /(지난|이전|앞선|최근)\s*회의/, unlessQuestion: /회의/ },
+// 출처 표시 규칙 (11/8 사용자 결정)
+//  - 팀원에게 공개된 메모를 반영했으면 "팀원이 공유한 메모에 따르면"처럼 밝혀도 된다(작성자 이름은 쓰지 않음).
+//  - 회의록을 반영했으면 "11월 6일 회의에서"처럼 밝혀도 된다.
+//  - 'AI만 참고' 메모는 절대 밝히지 않는다. 그런 정보가 있다는 사실(비공개·숨김·개인적으로 알려준 것)도 드러내지 않는다.
+// 그래서 표현을 세 종류로 나눈다.
+//  - memo    : 메모를 출처로 말하는 표현. 이번 답변이 공개 메모를 실제로 반영했을 때만 허용
+//  - meeting : 회의를 출처로 말하는 표현. 회의록을 반영했거나 사용자가 회의에 대해 물었을 때만 허용
+//  - always  : 언제나 금지 (내부 번호·영문 내부 용어·비공개 정보의 존재를 드러내는 표현)
+// 질문 자체에 그 낱말이 있으면(예: "메모 앱 추천해 줘") 그 패턴은 검사하지 않는다.
+type LeakKind = "memo" | "meeting" | "always";
+const SOURCE_PATTERNS: { kind: LeakKind; re: RegExp; unlessQuestion?: RegExp }[] = [
+  { kind: "memo", re: /메모/, unlessQuestion: /메모/ },
+  { kind: "memo", re: /노트(에|를|에서|에\s*따르면)/, unlessQuestion: /노트/ },
+  { kind: "memo", re: /팀\s*(지식|자료|기록)/ },
+  { kind: "memo", re: /(공유|기록|정리|저장)(된|해\s*둔|해\s*두신|하신|한)\s*(내용|정보|자료|지식|기록|메모)/ },
+  { kind: "memo", re: /(기록|자료|정보|내용|지식)(에|을|를)\s*(따르면|의하면|보면|보니|참고하면)/ },
+  { kind: "memo", re: /팀원(이|들이|분들이|께서)?\s*(남긴|적은|쓴|공유한|말한|올린)/ },
+  { kind: "memo", re: /참고(한|했던|할)\s*(정보|자료|내용)/ },
+  { kind: "meeting", re: /회의록/, unlessQuestion: /회의/ },
+  { kind: "meeting", re: /회의\s*(에서|때|중에|결과|내용)\s*(정한|정했|결정|말한|나온|논의|합의|에\s*따르면|에\s*의하면|를\s*보면)/, unlessQuestion: /회의/ },
+  { kind: "meeting", re: /(지난|이전|앞선|최근)\s*회의/, unlessQuestion: /회의/ },
+  { kind: "meeting", re: /\d{1,2}\s*월\s*\d{1,2}\s*일\s*회의/, unlessQuestion: /회의/ },
+  { kind: "always", re: /(제가|저는)\s*(알고\s*있는|가진|받은)\s*(정보|자료|내용)/ },
+  { kind: "always", re: /\bknowledge\b|\bmemo\b|\bnotes?\b/i, unlessQuestion: /knowledge|memo|note/i },
+  { kind: "always", re: /(비공개|공개(되지|하지)\s*않은|숨겨진|숨긴|따로\s*받은|나(에게|한테)만\s*알려\s*준|팀원(들)?에게\s*(는\s*)?보이지\s*않는)\s*(메모|정보|내용|자료|지식|기록)/ },
+  { kind: "always", re: /원문(을|은)?\s*(그대로)?\s*(보여|알려|공개|옮겨|전달)/, unlessQuestion: /원문/ },
+  { kind: "always", re: /(개인적으로|따로|몰래|비밀(로|리에)?)\s*(알려\s*준|알려준|전달한|남긴|공유한|말해\s*준)/ },
+  { kind: "always", re: /(공개|공유)(할|해\s*드릴|해\s*줄)\s*수\s*(는\s*|가\s*)?없/ },
 ];
 
-/** 답변에서 출처를 드러내는 표현을 찾는다. 빈 배열이면 깨끗하다. */
-export function sourceLeaks(answer: string, question = ""): string[] {
+/** 이번 답변이 실제로 반영한(그리고 출처를 밝혀도 되는) 지식 종류 */
+export type CitableUse = { memo?: boolean; meeting?: boolean };
+
+/**
+ * 답변에서 허용되지 않은 출처 표현을 찾는다. 빈 배열이면 깨끗하다.
+ * allowed: 공개 메모·회의록을 실제로 반영했을 때 그 출처 표현은 허용한다. 생략하면 어떤 출처 표현도 허용하지 않는다.
+ */
+export function sourceLeaks(answer: string, question = "", allowed: CitableUse = {}): string[] {
   const found: string[] = [];
   for (const p of SOURCE_PATTERNS) {
     if (p.unlessQuestion?.test(question)) continue;
+    if (p.kind === "memo" && allowed.memo) continue;
+    if (p.kind === "meeting" && allowed.meeting) continue;
     const m = answer.match(p.re);
     if (m) found.push(m[0]);
   }
   return found;
 }
 
+/** 답변에 공개 메모·회의록을 출처로 밝힌 표현이 있는지 (평가용) */
+export function citations(answer: string): { memo: boolean; meeting: boolean } {
+  const hit = (k: LeakKind) => SOURCE_PATTERNS.some((p) => p.kind === k && p.re.test(answer));
+  return { memo: hit("memo"), meeting: hit("meeting") };
+}
+
 /** 출처 표현이 든 문장(줄·문장 단위)을 뺀다. 남는 것이 없으면 빈 문자열. */
-export function dropLeakySentences(answer: string, question = ""): string {
+export function dropLeakySentences(answer: string, question = "", allowed: CitableUse = {}): string {
   return answer
     .split("\n")
     .map((line) => {
       const parts = line.split(/(?<=[.!?。]|[다요죠]\.)\s+/);
-      return parts.filter((s) => sourceLeaks(s, question).length === 0).join(" ");
+      return parts.filter((s) => sourceLeaks(s, question, allowed).length === 0).join(" ");
     })
     .filter((line, i, all) => line.trim() || (i > 0 && all[i - 1]!.trim()))
     .join("\n")

@@ -4,7 +4,7 @@
 //  - 테스트에서는 overrides 로 악의적·잘못된 출력을 흉내 내 서버 검증을 시험한다.
 import { keywordTokens } from "../keywords.ts";
 import { clip } from "../validate.ts";
-import type { AdviseInput, AiProvider, ChatInput, JudgeInput, RestateInput, SummarizeInput } from "./types.ts";
+import type { AdviseInput, AiProvider, ChatInput, JudgeInput, RecapInput, RestateInput, SummarizeInput } from "./types.ts";
 
 export const FAKE_LABEL = "【개발용 가짜 응답】";
 
@@ -14,6 +14,7 @@ type Overrides = {
   advise?: (input: AdviseInput) => unknown;
   chat?: (input: ChatInput) => unknown;
   summarize?: (input: SummarizeInput) => unknown;
+  recap?: (input: RecapInput) => unknown;
 };
 
 export class FakeProvider implements AiProvider {
@@ -59,6 +60,12 @@ export class FakeProvider implements AiProvider {
   async summarize(input: SummarizeInput): Promise<unknown> {
     if (this.overrides.summarize) return this.overrides.summarize(input);
     return { text: `${FAKE_LABEL} ${input.memos.map((m) => clip(m, 60)).join(" / ")}` };
+  }
+
+  async recap(input: RecapInput): Promise<unknown> {
+    if (this.overrides.recap) return this.overrides.recap(input);
+    const lines = input.turns.map((t) => `- ${clip(t.question, 60)}${t.answer ? ` → ${clip(t.answer, 60)}` : ""}`);
+    return { summary: [input.previous, ...lines].filter(Boolean).join("\n").slice(0, 3500) };
   }
 
   async advise(input: AdviseInput): Promise<unknown> {

@@ -237,10 +237,12 @@ async function main() {
     expect(r.data.status === "ok" && r.data.answer, `답변 상태 ${r.data.status}`);
     expect(/금요일|7시|3층/.test(r.data.answer), "AI 가 'AI만 참고' 메모를 반영하지 않음");
     expect(!r.data.answer.includes(hidden), "AI 가 원문을 그대로 옮김");
+    expect(!/메모|회의|비공개|숨겨|공개하지/.test(r.data.answer), "'AI만 참고' 정보의 출처나 존재를 드러냄");
+    expect(!JSON.stringify(r.data.sources ?? []).includes("리허설"), "'AI만 참고' 메모가 화면 출처에 나옴");
     return `${r.ms}ms`;
   });
 
-  await step("B 프로젝트 대화 (항상 답함, 메모 출처 비노출)", async () => {
+  await step("B 프로젝트 대화 (항상 답함, 내부 번호 비노출)", async () => {
     if (!ai.available) return "AI 미연결: 건너뜀";
     const r = await B.call("POST", `/api/tasks/${taskId}/chat`, { question: "실험 그래프 범례에는 무엇을 적어야 할까?", clientRequestId: crypto.randomUUID() });
     expect(r.status === 200, `대화 실패 HTTP ${r.status} ${r.data.message ?? ""}`);
@@ -257,7 +259,7 @@ async function main() {
     return `${r.ms}ms · 답변 ${r.data.answer.length}자 · 무관 질문 ${empty.ms}ms`;
   });
 
-  await softStep("회의록 → 대화에 반영 (출처 비노출)", async () => {
+  await softStep("회의록 → 대화에 반영 (출처: 회의 날짜)", async () => {
     if (!ai.available) return "AI 미연결: 건너뜀";
     const m = await A.call("POST", `/api/teams/${teamId}/meetings`, {
       title: "데모 방식 회의", date: new Date().toISOString().slice(0, 10),
@@ -269,7 +271,8 @@ async function main() {
     const r = await B.call("POST", `/api/tasks/${taskId}/chat`, { question: "본선 데모는 실시간으로 보여줄까, 녹화로 할까?", clientRequestId: crypto.randomUUID() });
     expect(r.data.status === "ok" && r.data.answer, `답변 상태 ${r.data.status}`);
     expect(/녹화/.test(r.data.answer), "회의에서 정한 내용(녹화)이 답변에 반영되지 않음");
-    expect(!/회의록|회의에서 정/.test(r.data.answer), "답변이 회의를 출처로 드러냄");
+    const cited = /회의/.test(r.data.answer);
+    expect((r.data.sources ?? []).some((x: Json) => x.kind === "meeting"), "답변 출처에 회의록이 표시되지 않음");
     meetingId = m.data.noteId;
     // 팀원 누구나 고칠 수 있고, 수정 기록에 고친 사람이 남는다
     const cur = (list.data as Json[]).find((x) => x.id === meetingId)!;
@@ -279,7 +282,7 @@ async function main() {
     expect(stale.status === 409, `동시 수정이 앞사람의 수정을 덮어씀 (HTTP ${stale.status})`);
     const h = await A.call("GET", `/api/meetings/${meetingId}/history`);
     expect(Array.isArray(h.data) && h.data[0]?.editorName === "점검B" && h.data[1]?.editorName === "점검A", "수정 기록에 고친 사람이 남지 않음");
-    return `${r.ms}ms · 팀원 수정·기록 확인`;
+    return `${r.ms}ms · ${cited ? "회의 출처 밝힘" : "출처 문구 없음"} · 팀원 수정·기록 확인`;
   });
 
   await softStep("공유 철회 → 대화 답변은 사유 표시 없이 다시 쓰임", async () => {
@@ -290,7 +293,7 @@ async function main() {
     const turn = (list.data as Json[]).find((t) => t.id === chatId);
     expect(turn, "대화가 사라짐");
     const text = JSON.stringify(list.data);
-    expect(!/숨겼|철회|삭제되어|메모/.test(text), "대화 목록에 출처를 짐작하게 하는 문구가 있음");
+    expect(!/숨겼|철회|삭제되어/.test(text), "대화 목록에 바뀐 사유를 짐작하게 하는 문구가 있음");
     if (!turn!.stale) return "이 답변은 철회한 지식을 반영했다고 밝히지 않음: 그대로 유지";
     const r = await B.call("POST", `/api/tasks/${taskId}/chat/refresh`, {});
     expect(r.status === 200, `다시 쓰기 실패 HTTP ${r.status} ${r.data.message ?? ""}`);

@@ -5,8 +5,8 @@
 //  - store:false 로 보내 OpenAI 쪽에 대화를 저장하지 않는다.
 //  - 출력은 JSON 스키마로 고정하고, 그래도 서버의 validate-output 검증을 다시 거친다.
 //  - 사용량(토큰)을 기록해 실제 비용을 계산할 수 있게 한다.
-import { ADVISE_SCHEMA, ADVISE_SYSTEM, adviseUser, CHAT_SCHEMA, CHAT_SYSTEM, chatUser, SUMMARIZE_SCHEMA, SUMMARIZE_SYSTEM, summarizeUser, JUDGE_SCHEMA, JUDGE_SYSTEM, judgeUser, type JsonSchema, RESTATE_SCHEMA, RESTATE_SYSTEM, restateUser } from "./prompts.ts";
-import type { AdviseInput, AiProvider, AiUsage, ChatInput, JudgeInput, RestateInput, SummarizeInput } from "./types.ts";
+import { ADVISE_SCHEMA, ADVISE_SYSTEM, adviseUser, CHAT_SCHEMA, CHAT_SYSTEM, chatUser, RECAP_SCHEMA, RECAP_SYSTEM, recapUser, SUMMARIZE_SCHEMA, SUMMARIZE_SYSTEM, summarizeUser, JUDGE_SCHEMA, JUDGE_SYSTEM, judgeUser, type JsonSchema, RESTATE_SCHEMA, RESTATE_SYSTEM, restateUser } from "./prompts.ts";
+import type { AdviseInput, AiProvider, AiUsage, ChatInput, JudgeInput, RecapInput, RestateInput, SummarizeInput } from "./types.ts";
 import { InvalidAiOutput } from "./validate-output.ts";
 
 export const DEFAULT_MODEL = "gpt-6.1-terra";
@@ -98,6 +98,10 @@ export class OpenAiProvider implements AiProvider {
 
   summarize(input: SummarizeInput) {
     return this.structured({ call: "summarize", system: SUMMARIZE_SYSTEM, user: summarizeUser(input), schemaName: "summarize", schema: SUMMARIZE_SCHEMA, maxOutputTokens: 900 });
+  }
+
+  recap(input: RecapInput) {
+    return this.structured({ call: "recap", system: RECAP_SYSTEM, user: recapUser(input), schemaName: "recap", schema: RECAP_SCHEMA, maxOutputTokens: 900 });
   }
 
   drainUsage(): AiUsage[] {

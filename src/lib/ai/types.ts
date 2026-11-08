@@ -50,7 +50,14 @@ export type ChatInput = {
   question: string;
   /** 서버가 답변을 다시 쓰게 할 때 덧붙이는 지시 (출처 표현이 나왔을 때) */
   retryNote?: string;
+  /** 이 사용자와 이 프로젝트에서 나눈 더 오래된 대화의 요약 (사용자별 대화 기억) */
+  memory?: string | null;
+  /** 질문한 본인의 표시 이름 ("내가 할 일"을 알아듣게). 다른 사람의 이름·출처 작성자는 넘기지 않는다 */
+  askerName?: string | null;
 };
+
+/** 대화 기억 만들기: 이전 요약 + 새로 접어 넣을 대화 → 새 요약 */
+export type RecapInput = { previous: string | null; turns: { question: string; answer: string | null }[] };
 
 /** 작성자가 고른 자기 메모들을 하나의 정리문으로 */
 export type SummarizeInput = { memos: string[] };
@@ -66,7 +73,7 @@ export type SummarizeInput = { memos: string[] };
  */
 export type AiUsage = {
   model: string;
-  call: "restate" | "judge" | "advise" | "chat" | "summarize" | "eval";
+  call: "restate" | "judge" | "advise" | "chat" | "summarize" | "recap" | "eval";
   inputTokens: number;
   cachedTokens: number;
   outputTokens: number;
@@ -83,6 +90,7 @@ export interface AiProvider {
   advise(input: AdviseInput): Promise<unknown>;
   chat(input: ChatInput): Promise<unknown>;
   summarize(input: SummarizeInput): Promise<unknown>;
+  recap(input: RecapInput): Promise<unknown>;
   /** 마지막으로 가져간 이후의 사용량(토큰·시간). 비용 기록용. 없으면 빈 배열. */
   drainUsage?(): AiUsage[];
 }
