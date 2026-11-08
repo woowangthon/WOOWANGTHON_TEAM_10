@@ -105,6 +105,8 @@ const AFFECTED_BY_NOTE = `(
  * 모델은 받은 메모 전체의 영향을 받을 수 있으므로, 근거로 인용하지 않은 항목까지 요청 단위로 무효화한다.
  */
 export async function invalidateAdviceForNote(tx: Db, noteId: string): Promise<number> {
+  // 이 메모가 들어간 대화 기억(요약)은 바로 지운다. 다음 질문 때 그 내용 없이 다시 만든다(chat.ts memoryFor)
+  await tx.query(`delete from chat_memories where input_version_ids && ${NOTE_VERSION_IDS}`, [noteId]);
   const r = await tx.query(
     `update advice_requests
      set status = 'invalidated', error = coalesce(error, 'source_changed'), finished_at = coalesce(finished_at, now())

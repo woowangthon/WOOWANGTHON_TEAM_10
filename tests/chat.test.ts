@@ -54,7 +54,10 @@ describe("프로젝트 대화", () => {
     const sent = rec.calls.chat[0]!.knowledge.map((k) => k.text);
     expect(sent).toContain(EXP);
     expect(sent.join(" ")).not.toContain("비밀 계획");
-    expect(JSON.stringify(rec.calls.chat[0])).not.toMatch(/alice|bob|@example/);
+    // 지식에는 작성자 정보가 없고, 이름은 질문한 본인 것만 간다
+    expect(JSON.stringify(rec.calls.chat[0]!.knowledge)).not.toMatch(/alice|bob|@example/);
+    expect(rec.calls.chat[0]!.askerName).toBe("bob");
+    expect(JSON.stringify(rec.calls.chat[0])).not.toMatch(/alice|@example/);
     expect(t.answer).not.toMatch(/\bN\d+\b/);
     // 실제로 반영한 것만 내부에 기록 (지어낸 N99 는 버림)
     const ev = await getPool().query("select evidence_version_ids from advice_items where request_id = $1", [t.id]);

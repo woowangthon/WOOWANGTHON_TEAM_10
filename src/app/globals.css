@@ -129,3 +129,9 @@ ol.history li { margin: 8px 0; }
 .share-choice > div { border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
 .share-choice p { margin: 6px 0; font-size: .85rem; }
 .ai-only-btn { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+/* 답변 아래 출처 (팀원 공개 지식만) */
+details.sources { margin-top: 8px; font-size: .82rem; border-top: 1px dashed var(--line); padding-top: 6px; }
+details.sources summary { cursor: pointer; color: var(--accent); }
+.source { margin: 6px 0; }
+.source-text { white-space: pre-wrap; border-left: 3px solid var(--line); padding-left: 8px; margin-top: 2px; }

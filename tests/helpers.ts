@@ -10,7 +10,7 @@ export function useCleanDb() {
   assertTestDatabase(process.env.DATABASE_URL);
   beforeEach(async () => {
     await getPool().query(
-      "truncate audit_log, note_sources, reactions, advice_items, advice_requests, note_versions, notes, tasks, memberships, teams, users cascade",
+      "truncate audit_log, chat_memories, note_sources, reactions, advice_items, advice_requests, note_versions, notes, tasks, memberships, teams, users cascade",
     );
   });
   afterAll(closePool);
@@ -31,11 +31,11 @@ export const restated = (summary: string) => ({
   clarifying_question: null,
 });
 
-import type { AdviseInput, AiProvider, ChatInput, JudgeInput, RestateInput, SummarizeInput } from "../src/lib/ai/types.ts";
+import type { AdviseInput, AiProvider, ChatInput, JudgeInput, RecapInput, RestateInput, SummarizeInput } from "../src/lib/ai/types.ts";
 
 /** 제공자에 들어간 입력을 기록한다 (모델에 무엇이 전달되는지 검사용). */
 export function recording(p: AiProvider) {
-  const calls = { restate: [] as RestateInput[], judge: [] as JudgeInput[], advise: [] as AdviseInput[], chat: [] as ChatInput[], summarize: [] as SummarizeInput[] };
+  const calls = { restate: [] as RestateInput[], judge: [] as JudgeInput[], advise: [] as AdviseInput[], chat: [] as ChatInput[], summarize: [] as SummarizeInput[], recap: [] as RecapInput[] };
   const provider: AiProvider = {
     name: p.name,
     isAi: p.isAi,
@@ -44,6 +44,7 @@ export function recording(p: AiProvider) {
     advise: (i) => (calls.advise.push(i), p.advise(i)),
     chat: (i) => (calls.chat.push(i), p.chat(i)),
     summarize: (i) => (calls.summarize.push(i), p.summarize(i)),
+    recap: (i) => (calls.recap.push(i), p.recap(i)),
   };
   return { provider, calls };
 }
