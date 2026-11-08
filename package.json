@@ -16,7 +16,8 @@
     "check": "npm run typecheck && npm test",
     "eval": "node --experimental-transform-types eval/run.ts",
     "smoke": "node --experimental-strip-types scripts/smoke.ts",
-    "eval:chat": "node --experimental-transform-types eval/chat-run.ts"
+    "eval:chat": "node --experimental-transform-types eval/chat-run.ts",
+    "eval:v2": "node --experimental-transform-types eval/chat-run-v2.ts"
   },
   "dependencies": {
     "next": "16.4.2",
