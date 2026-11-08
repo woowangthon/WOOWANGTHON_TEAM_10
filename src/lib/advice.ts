@@ -65,7 +65,8 @@ function taskContext(task: Record<string, string>, question: string): TaskContex
   };
 }
 
-const contextQuery = (c: TaskContext) => [c.title, c.purpose, c.audience, c.constraints, c.question].filter(Boolean).join("\n");
+// 검색어는 앞에서부터 정해진 개수만 쓰므로 질문을 맨 앞에 둔다 (작업 설명이 길어도 질문의 검색어가 잘리지 않게)
+const contextQuery = (c: TaskContext) => [c.question, c.title, c.purpose, c.audience, c.constraints].filter(Boolean).join("\n");
 
 /** 맥락이 부족할 때 보여줄 짧은 안내 (요청을 막지는 않음, 원안 §7.2-3) */
 function contextHints(c: TaskContext): string[] {

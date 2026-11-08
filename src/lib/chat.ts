@@ -172,7 +172,9 @@ async function answer(userId: string, task: TaskRow, requestId: string, question
     const { turns: history, cutoff } = await historyFor(task.id, userId, createdAt);
     // 대화 기억은 새 질문에만 쓴다(예전 답변을 다시 쓸 때는 그 시점 이후의 대화가 섞이지 않게)
     const memory = createdAt ? null : await memoryFor(task, userId, cutoff, provider);
-    const query = [project.title, project.purpose, project.audience, project.constraints, ...history.map((h) => h.question), question]
+    // 검색어는 앞에서부터 정해진 개수만 쓰므로(keywords.ts) 현재 질문을 맨 앞에, 그다음 최근 질문, 프로젝트 정보 순으로 둔다.
+    // 프로젝트 설명이나 이전 질문이 길어도 지금 묻는 말의 검색어가 잘려 나가지 않게 하기 위해서다.
+    const query = [question, ...history.map((h) => h.question).reverse(), project.title, project.purpose, project.audience, project.constraints]
       .filter(Boolean)
       .join("\n");
     const found = await findCandidates(task.team_id, query, { requireExternalAi: true, limit: MAX_KNOWLEDGE, includeAllIfAtMost: MAX_KNOWLEDGE, includeAiOnly: true });
