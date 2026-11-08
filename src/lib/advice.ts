@@ -377,10 +377,10 @@ export async function getAdvice(userId: string, requestId: string) {
   const ev = ids.length
     ? await db.query(
         `select v.id, v.raw_text, v.restated, n.id as note_id, coalesce(u.display_name, '탈퇴한 사용자') as display_name,
-                (n.current_version_id = v.id and n.share_state = 'shared') as available
+                (n.current_version_id = v.id and n.share_state = 'shared' and (n.visibility = 'team' or n.author_id = $3)) as available
          from note_versions v join notes n on n.id = v.note_id left join users u on u.id = n.author_id
          where v.id = any($1::uuid[]) and n.team_id = $2`,
-        [ids, req.team_id],
+        [ids, req.team_id, userId],
       )
     : { rows: [] as Record<string, any>[] };
   const evMap = new Map(ev.rows.map((e) => [e.id as string, e]));

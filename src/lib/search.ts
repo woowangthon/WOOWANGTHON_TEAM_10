@@ -19,6 +19,8 @@ export type Candidate = {
   /** 회의록 제목·날짜 (회의록만) */
   title: string | null;
   meetingDate: string | null;
+  /** 팀원에게 보이지 않고 AI 만 참고하는 메모 */
+  aiOnly: boolean;
   /** 작업 맥락의 키워드 중 이 메모에 나타난 개수 */
   hits: number;
   score: number;
@@ -30,6 +32,11 @@ export type SearchOptions = {
   limit?: number;
   /** 공유 메모가 이 개수 이하인 작은 팀이면 키워드가 안 겹쳐도 전부 후보로 (AI 판정용). 0 이면 끔 */
   includeAllIfAtMost?: number;
+  /**
+   * 'AI만 참고' 메모(팀원에게 보이지 않음)도 후보로. 화면에 메모 원문을 보여주지 않는 프로젝트 대화에서만 켠다.
+   * 근거 원문을 보여주는 이전 조언 흐름에서는 끈다(팀원에게 원문이 보이므로).
+   */
+  includeAiOnly?: boolean;
 };
 
 /** 권한 확인이 끝난 뒤 내부에서 부르는 검색. */
@@ -39,7 +46,7 @@ export async function findCandidates(teamId: string, query: string, opts: Search
   const r = await getPool().query(
     `with eligible as (
        select v.id as version_id, n.id as note_id, v.raw_text, v.restated, v.kind, v.search_text, n.updated_at,
-              n.origin, n.title, n.meeting_date::text as meeting_date,
+              n.origin, n.title, n.meeting_date::text as meeting_date, n.visibility,
               n.allow_external_ai
        from notes n
        join note_versions v on v.id = n.current_version_id and v.team_id = n.team_id
@@ -48,6 +55,7 @@ export async function findCandidates(teamId: string, query: string, opts: Search
          and v.intent_state in ('confirmed', 'raw_only')
          and v.index_state = 'ready'
          and ($3::boolean = false or n.allow_external_ai)
+         and ($6::boolean or n.visibility = 'team')
      ), scored as (
        select e.*,
               (select count(*) from unnest($2::text[]) w where word_similarity(w, e.search_text) >= 0.5)::int as hits,
@@ -58,7 +66,7 @@ export async function findCandidates(teamId: string, query: string, opts: Search
      where hits >= 1 or ($5::int > 0 and total <= $5)
      order by hits desc, updated_at desc
      limit $4`,
-    [teamId, tokens, opts.requireExternalAi, limit, opts.includeAllIfAtMost ?? 0],
+    [teamId, tokens, opts.requireExternalAi, limit, opts.includeAllIfAtMost ?? 0, opts.includeAiOnly ?? false],
   );
   return r.rows.map((row) => ({
     versionId: row.version_id,
@@ -71,6 +79,7 @@ export async function findCandidates(teamId: string, query: string, opts: Search
     origin: row.origin,
     title: row.title ?? null,
     meetingDate: row.meeting_date ?? null,
+    aiOnly: row.visibility === "ai_only",
     hits: Number(row.hits),
     score: tokens.length ? row.hits / tokens.length : 0,
   }));

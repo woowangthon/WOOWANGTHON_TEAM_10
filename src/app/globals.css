@@ -122,3 +122,10 @@ ol.history li { margin: 8px 0; }
 .diff-del { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); text-decoration: line-through; }
 .diff-same { color: var(--muted); }
 .diff-skip { color: var(--muted); font-style: italic; }
+
+/* 공유 범위 고르기 */
+.share-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+@media (max-width: 480px) { .share-choice { grid-template-columns: 1fr; } }
+.share-choice > div { border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.share-choice p { margin: 6px 0; font-size: .85rem; }
+.ai-only-btn { background: var(--fg); color: var(--bg); border-color: var(--fg); }

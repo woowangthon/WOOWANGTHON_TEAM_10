@@ -302,7 +302,7 @@ const VERSION_COLS = "id, version, raw_text, restated, intent_state, kind, fact_
 export async function getNote(userId: string, noteId: string) {
   const db = getPool();
   const r = await db.query(
-    `select n.id, n.team_id, n.author_id, n.share_state, n.current_version_id, n.allow_external_ai, coalesce(u.display_name, '탈퇴한 사용자') as author_name
+    `select n.id, n.team_id, n.author_id, n.share_state, n.visibility, n.current_version_id, n.allow_external_ai, coalesce(u.display_name, '탈퇴한 사용자') as author_name
      from notes n left join users u on u.id = n.author_id where n.id = $1`,
     [noteId],
   );
@@ -310,7 +310,8 @@ export async function getNote(userId: string, noteId: string) {
   if (!note) throw notFound();
   await requireMembership(db, userId, note.team_id);
   const isAuthor = note.author_id === userId;
-  if (!isAuthor && note.share_state !== "shared") throw notFound();
+  // 남의 초안·철회·'AI만 참고' 메모는 존재 여부도 알리지 않는다
+  if (!isAuthor && (note.share_state !== "shared" || note.visibility !== "team")) throw notFound();
 
   const versions = isAuthor
     ? (await db.query(`select ${VERSION_COLS} from note_versions where note_id = $1 order by version`, [noteId])).rows
@@ -343,7 +344,7 @@ export async function listNotes(userId: string, teamId: string) {
          and (case when n.author_id = $2 then true else nv.id = n.current_version_id end)
        order by nv.version desc limit 1
      ) v on true
-     where n.team_id = $1 and (n.share_state = 'shared' or n.author_id = $2)
+     where n.team_id = $1 and ((n.share_state = 'shared' and n.visibility = 'team') or n.author_id = $2)
      order by n.updated_at desc`,
     [teamId, userId],
   );

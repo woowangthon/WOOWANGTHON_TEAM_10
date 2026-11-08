@@ -22,6 +22,8 @@ export type CandidateForAi = {
   conditions: string[];
   /** 회의 기록이면 제목·날짜를 붙인다 (대화에서 개인 생각보다, 오래된 회의보다 최근 회의를 우선하게) */
   meeting?: { title: string; date: string } | null;
+  /** 팀원에게 보이지 않는 지식: 원문을 그대로 옮기지 말고 필요한 만큼만 반영 */
+  aiOnly?: boolean;
 };
 
 export type Stance = "support" | "caution" | "objection" | "unclear";

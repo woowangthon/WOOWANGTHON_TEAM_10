@@ -16,6 +16,15 @@ import { restatementWarnings } from "./restate-check.ts";
 import { bool, cleanText, text, uuid } from "./validate.ts";
 
 const MAX_SELECT = 20;
+
+/** team: 팀원도 보고 AI 도 참고 · ai_only: 팀원은 못 보고 AI 만 대화할 때 참고 */
+export type Visibility = "team" | "ai_only";
+
+function visibilityOf(value: unknown): Visibility {
+  if (value === undefined || value === null) return "team";
+  if (value !== "team" && value !== "ai_only") throw badRequest("공유 범위 값이 올바르지 않습니다.");
+  return value;
+}
 const MAX_SHARED_TEXT = 2000;
 
 function noteIdList(value: unknown, field: string, { min }: { min: number }): string[] {
@@ -40,7 +49,7 @@ export async function listMemos(userId: string, teamId: string) {
   );
   const shared = await db.query(
     `select n.id, n.share_state, n.author_id = $2 as is_author, u.display_name as author_name, n.allow_external_ai, n.updated_at,
-            v.id as version_id, v.raw_text, v.version
+            n.visibility, v.id as version_id, v.raw_text, v.version
      from notes n
      join users u on u.id = n.author_id
      join lateral (
@@ -49,6 +58,7 @@ export async function listMemos(userId: string, teamId: string) {
        order by nv.version desc limit 1
      ) v on true
      where n.team_id = $1 and n.origin <> 'meeting' -- 회의록은 회의록 화면에서 따로 본다
+       and (n.visibility = 'team' or n.author_id = $2) -- 'AI만 참고' 는 작성자만 본다
        and (n.share_state = 'shared' or (n.author_id = $2 and (n.origin = 'summary' or n.share_state = 'withdrawn')))
      order by n.updated_at desc`,
     [teamId, userId],
@@ -63,6 +73,7 @@ export async function listMemos(userId: string, teamId: string) {
       isAuthor: r.is_author as boolean,
       authorName: r.author_name as string,
       allowExternalAi: r.allow_external_ai as boolean,
+      visibility: r.visibility as Visibility,
       updatedAt: r.updated_at,
     })),
   };
@@ -114,13 +125,15 @@ export async function summarizeMemos(userId: string, teamId: string, input: { no
 export async function shareSummary(
   userId: string,
   teamId: string,
-  input: { text: unknown; sourceNoteIds?: unknown; allowExternalAi?: unknown },
+  input: { text: unknown; sourceNoteIds?: unknown; allowExternalAi?: unknown; visibility?: unknown },
 ) {
   const body = text(input.text, "공유할 내용", { min: 1, max: MAX_SHARED_TEXT });
   const sources = input.sourceNoteIds === undefined || (Array.isArray(input.sourceNoteIds) && input.sourceNoteIds.length === 0)
     ? []
     : noteIdList(input.sourceNoteIds, "바탕 메모", { min: 1 });
-  const allowExternalAi = bool(input.allowExternalAi, "AI 참고 허용", true);
+  const visibility = visibilityOf(input.visibility);
+  // 'AI만 참고' 는 AI 가 참고하는 것이 목적이므로 항상 켠다
+  const allowExternalAi = visibility === "ai_only" ? true : bool(input.allowExternalAi, "AI 참고 허용", true);
   return withTx(async (tx) => {
     await requireMembership(tx, userId, teamId);
     if (sources.length) {
@@ -131,8 +144,8 @@ export async function shareSummary(
       if (own.rows[0].c !== sources.length) throw notFound();
     }
     const n = await tx.query(
-      "insert into notes (team_id, author_id, allow_external_ai, origin) values ($1, $2, $3, 'summary') returning id",
-      [teamId, userId, allowExternalAi],
+      "insert into notes (team_id, author_id, allow_external_ai, origin, visibility) values ($1, $2, $3, 'summary', $4) returning id",
+      [teamId, userId, allowExternalAi, visibility],
     );
     const noteId = n.rows[0].id as string;
     const v = await tx.query(
@@ -146,7 +159,7 @@ export async function shareSummary(
       noteId,
     ]);
     for (const s of sources) await tx.query("insert into note_sources (note_id, source_note_id) values ($1, $2)", [noteId, s]);
-    await audit(tx, userId, "memo.share", noteId, { sources: sources.length, allowExternalAi });
+    await audit(tx, userId, "memo.share", noteId, { sources: sources.length, allowExternalAi, visibility });
     return { noteId, versionId: v.rows[0].id as string };
   });
 }
@@ -170,14 +183,40 @@ export async function setAiReference(userId: string, noteId: string, input: { al
   if (typeof input.allowExternalAi !== "boolean") throw badRequest("AI 참고 허용 값이 올바르지 않습니다.");
   const allow = input.allowExternalAi;
   return withTx(async (tx) => {
-    const r = await tx.query("select team_id, author_id, allow_external_ai, origin, share_state from notes where id = $1 for update", [noteId]);
+    const r = await tx.query("select team_id, author_id, allow_external_ai, origin, share_state, visibility from notes where id = $1 for update", [noteId]);
     const n = r.rows[0];
     if (!n || n.author_id !== userId || (n.origin === "memo" && n.share_state === "draft")) throw notFound();
     await requireMembership(tx, userId, n.team_id);
     if (n.allow_external_ai === allow) return { noteId, allowExternalAi: allow, invalidated: 0 };
+    if (!allow && n.visibility === "ai_only")
+      throw conflict("'AI만 참고' 메모는 AI 참고를 끌 수 없습니다. 그만 쓰려면 공유를 철회하거나 삭제해 주세요.");
     await tx.query("update notes set allow_external_ai = $2, updated_at = now() where id = $1", [noteId, allow]);
     const invalidated = allow ? 0 : await invalidateAdviceForNote(tx, noteId);
     await audit(tx, userId, "note.ai_reference", noteId, { allow, invalidated });
     return { noteId, allowExternalAi: allow, invalidated };
+  });
+}
+
+/**
+ * 공유 범위 바꾸기 (작성자만, 정리해 공유한 메모만).
+ * team → ai_only: 팀원 화면에서 사라지고 AI 만 참고한다(이미 본 사람의 기억까지 지울 수는 없다).
+ * ai_only → team: 팀원도 볼 수 있게 된다.
+ * AI 가 참고하는 내용은 그대로이므로 대화 답변은 다시 쓰지 않는다.
+ */
+export async function setVisibility(userId: string, noteId: string, input: { visibility: unknown }) {
+  if (input.visibility !== "team" && input.visibility !== "ai_only") throw badRequest("공유 범위 값이 올바르지 않습니다.");
+  const visibility = input.visibility;
+  return withTx(async (tx) => {
+    const r = await tx.query("select team_id, author_id, origin, visibility from notes where id = $1 for update", [noteId]);
+    const n = r.rows[0];
+    if (!n || n.author_id !== userId || n.origin !== "summary") throw notFound();
+    await requireMembership(tx, userId, n.team_id);
+    if (n.visibility === visibility) return { noteId, visibility };
+    await tx.query(
+      "update notes set visibility = $2, allow_external_ai = (allow_external_ai or $2 = 'ai_only'), updated_at = now() where id = $1",
+      [noteId, visibility],
+    );
+    await audit(tx, userId, "note.visibility", noteId, { visibility });
+    return { noteId, visibility };
   });
 }

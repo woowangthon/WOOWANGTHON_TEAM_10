@@ -10,5 +10,6 @@ export const POST = route<{ teamId: string }>(async (req, p) => {
     text: body.text,
     sourceNoteIds: body.sourceNoteIds,
     allowExternalAi: body.allowExternalAi,
+    visibility: body.visibility,
   });
 });
