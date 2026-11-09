@@ -24,6 +24,8 @@ export type CandidateForAi = {
   meeting?: { title: string; date: string } | null;
   /** 팀원에게 보이지 않는 지식: 원문을 그대로 옮기지 말고 필요한 만큼만 반영 */
   aiOnly?: boolean;
+  /** 이 지식을 쓴(마지막으로 고친) 날짜. 지식 안의 '내일'·'다음 주'는 이 날 기준이다 */
+  writtenOn?: string | null;
 };
 
 export type Stance = "support" | "caution" | "objection" | "unclear";
@@ -54,6 +56,8 @@ export type ChatInput = {
   memory?: string | null;
   /** 질문한 본인의 표시 이름 ("내가 할 일"을 알아듣게). 다른 사람의 이름·출처 작성자는 넘기지 않는다 */
   askerName?: string | null;
+  /** 오늘 날짜와 요일 (한국 시간). '이번 주'·'마감까지 며칠' 같은 일정 판단의 기준 */
+  today?: string | null;
 };
 
 /** 대화 기억 만들기: 이전 요약 + 새로 접어 넣을 대화 → 새 요약 */

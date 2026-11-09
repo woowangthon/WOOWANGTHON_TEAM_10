@@ -199,7 +199,7 @@ export async function setAiReference(userId: string, noteId: string, input: { al
 
 /**
  * 공유 범위 바꾸기 (작성자만, 정리해 공유한 메모만).
- * team → ai_only: 팀원 화면에서 사라지고 AI 만 참고한다. 그 메모를 반영한 답변·대화 기억은 다음에 열 때 'AI만 참고' 규칙으로
+ * team → ai_only: 팀원 화면에서 사라지고 AI 만 참고한다. 그 메모가 넘어간 답변(만드는 중인 것 포함)·대화 기억은 다음에 열 때 'AI만 참고' 규칙으로
  *   다시 쓰인다(이미 본 사람의 기억까지 지울 수는 없다).
  * ai_only → team: 팀원도 볼 수 있게 된다(답변은 그대로).
  */
@@ -216,9 +216,9 @@ export async function setVisibility(userId: string, noteId: string, input: { vis
       "update notes set visibility = $2, allow_external_ai = (allow_external_ai or $2 = 'ai_only'), updated_at = now() where id = $1",
       [noteId, visibility],
     );
-    // 범위를 좁히면 그 메모를 반영한(출처로 밝혔을 수 있는) 답변과 대화 기억을 다시 쓰게 한다.
-    // 다시 쓸 때는 'AI만 참고' 규칙(출처·존재 숨김, 세부 생략)이 적용된다.
-    const invalidated = visibility === "ai_only" ? await invalidateAdviceForNote(tx, noteId) : 0;
+    // 범위를 좁히면 그 메모가 넘어간 모든 답변(만드는 중인 것 포함)과 대화 기억을 다시 쓰게 한다. 모델이 반영했다고
+    // 밝히지 않은 답변도 공개 메모 규칙으로 쓰였으므로 입력 기준으로 고른다. 다시 쓸 때는 'AI만 참고' 규칙이 적용된다.
+    const invalidated = visibility === "ai_only" ? await invalidateAdviceForNote(tx, noteId, "input") : 0;
     await audit(tx, userId, "note.visibility", noteId, { visibility, invalidated });
     return { noteId, visibility, invalidated };
   });
