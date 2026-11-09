@@ -81,6 +81,8 @@ export type PipelineResult = {
   dropped: number;
   emptyReason: string | null;
   inputIds: string[];
+  /** 저장 직전까지 남아 있어야 하는 입력 버전 (삭제되면 저장하지 않음). 대화에서 물려받은 입력 확인용 */
+  presentIds?: string[];
 };
 
 /** AI 를 거치지 않은 항목의 표식. 화면에서 "키워드 일치 · AI 미사용" 으로 구분한다. */
@@ -231,6 +233,10 @@ export async function finalize(
         [res.inputIds, teamId],
       );
       if (live.rowCount !== res.inputIds.length) return invalidateRequest(tx, requestId, "source_changed");
+    }
+    if (res.presentIds?.length) {
+      const p = await tx.query("select id from note_versions where id = any($1::uuid[]) for share", [res.presentIds]);
+      if (p.rowCount !== res.presentIds.length) return invalidateRequest(tx, requestId, "source_changed");
     }
     const t = await tx.query("select version from tasks where id = $1 for share", [taskId]);
     if (!t.rowCount || t.rows[0].version !== taskVersion) return invalidateRequest(tx, requestId, "task_changed");

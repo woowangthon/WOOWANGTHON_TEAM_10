@@ -21,6 +21,8 @@ export type Candidate = {
   meetingDate: string | null;
   /** 팀원에게 보이지 않고 AI 만 참고하는 메모 */
   aiOnly: boolean;
+  /** 이 버전을 쓴 날짜 (한국 시간, YYYY-MM-DD). '내일'·'다음 주' 같은 말의 기준 */
+  writtenOn: string | null;
   /** 작업 맥락의 키워드 중 이 메모에 나타난 개수 */
   hits: number;
   score: number;
@@ -47,6 +49,7 @@ export async function findCandidates(teamId: string, query: string, opts: Search
     `with eligible as (
        select v.id as version_id, n.id as note_id, v.raw_text, v.restated, v.kind, v.search_text, n.updated_at,
               n.origin, n.title, n.meeting_date::text as meeting_date, n.visibility,
+              to_char(v.created_at at time zone 'Asia/Seoul', 'YYYY-MM-DD') as written_on,
               n.allow_external_ai
        from notes n
        join note_versions v on v.id = n.current_version_id and v.team_id = n.team_id
@@ -80,6 +83,7 @@ export async function findCandidates(teamId: string, query: string, opts: Search
     title: row.title ?? null,
     meetingDate: row.meeting_date ?? null,
     aiOnly: row.visibility === "ai_only",
+    writtenOn: row.written_on ?? null,
     hits: Number(row.hits),
     score: tokens.length ? row.hits / tokens.length : 0,
   }));

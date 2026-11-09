@@ -18,6 +18,7 @@ import type { AiProvider, CandidateForAi, ChatInput, ProjectContext } from "./ai
 import { dropLeakySentences, InvalidAiOutput, sourceLeaks, validateChatOutput, type CitableUse } from "./ai/validate-output.ts";
 import { audit, getPool } from "./db.ts";
 import { notFound } from "./errors.ts";
+import { MAX_MEETING } from "./meetings.ts";
 import { findCandidates, type Candidate } from "./search.ts";
 import { clip, text, uuid } from "./validate.ts";
 
@@ -26,8 +27,8 @@ const MAX_KNOWLEDGE = 30;
 /** 이어서 건넬 이전 대화 턴 수 */
 const HISTORY_TURNS = 6;
 const MAX_QUESTION = 2000;
-/** 회의록 하나를 모델에 건넬 때의 최대 길이 */
-const MAX_MEETING_CHARS = 6000;
+/** 회의록 하나를 모델에 건넬 때의 최대 길이. 입력 한도(meetings.ts MAX_MEETING)와 같게 둬서 긴 회의록 끝의 결정이 잘리지 않게 한다 */
+const MAX_MEETING_CHARS = MAX_MEETING;
 /** 한 번 열 때 다시 쓸 최대 답변 수 (나머지는 다음 요청에서) */
 const REFRESH_BATCH = 3;
 
@@ -58,7 +59,7 @@ const projectOf = (t: TaskRow): ProjectContext => ({ title: t.title, purpose: t.
 async function historyFor(taskId: string, userId: string, before: string | null) {
   const r = await getPool().query(
     `select * from (
-       select r.question, r.created_at, r.created_at::text as at_text, i.body,
+       select r.question, r.created_at, r.created_at::text as at_text, i.body, r.input_version_ids,
               coalesce((select bool_and(coalesce(n.current_version_id = v.id and n.share_state = 'shared' and n.allow_external_ai, false))
                         from unnest(r.input_version_ids) e(id)
                         left join note_versions v on v.id = e.id
@@ -72,10 +73,13 @@ async function historyFor(taskId: string, userId: string, before: string | null)
     [taskId, userId, before, HISTORY_TURNS],
   );
   const turns: ChatInput["history"] = r.rows.map((x) => ({ question: x.question as string, answer: x.inputs_live ? clip(x.body as string, 1500) : null }));
+  // 답변을 그대로 넘기는 턴은 그 답변이 받았던 지식도 이번 답변에 함께 흘러든다(모델이 이전 답변의 내용을 반복할 수 있음).
+  // 그래서 그 지식들을 이번 요청의 입력으로 물려받아 기록한다. 원래 메모를 지우거나 범위를 좁히면 파생 답변까지 함께 다시 쓰인다.
+  const inherited = r.rows.filter((x) => x.inputs_live).flatMap((x) => x.input_version_ids as string[]);
   // 최근 대화가 꽉 찼으면 그보다 오래된 대화는 대화 기억(요약)으로 넘긴다
   // 시각은 DB 문자열 그대로 넘긴다 (JS Date 는 마이크로초를 잃어 경계의 턴이 겹치거나 빠진다)
   const cutoff = r.rows.length === HISTORY_TURNS ? (r.rows[0].at_text as string) : null;
-  return { turns, cutoff };
+  return { turns, cutoff, inherited };
 }
 
 /**
@@ -97,6 +101,18 @@ async function generate(provider: AiProvider, input: ChatInput, kinds: ReadonlyM
   return out;
 }
 
+/** 오늘 날짜와 요일 (한국 시간). 예: "2026-11-09 (월)" */
+export function todayKst(now = new Date()): string {
+  const d = new Date(now.getTime() + 9 * 3600_000);
+  return `${d.toISOString().slice(0, 10)} (${"일월화수목금토"[d.getUTCDay()]})`;
+}
+
+async function withCurrentVisibility(cands: Candidate[]): Promise<Candidate[]> {
+  const r = await getPool().query("select id, visibility from notes where id = any($1::uuid[])", [cands.map((c) => c.noteId)]);
+  const vis = new Map(r.rows.map((x) => [x.id as string, x.visibility as string]));
+  return cands.map((c) => ({ ...c, aiOnly: vis.get(c.noteId) === "ai_only" }));
+}
+
 const LIVE_INPUTS = `coalesce((select bool_and(coalesce(n.current_version_id = v.id and n.share_state = 'shared' and n.allow_external_ai, false))
                      from unnest(r.input_version_ids) e(id)
                      left join note_versions v on v.id = e.id
@@ -108,7 +124,9 @@ const LIVE_INPUTS = `coalesce((select bool_and(coalesce(n.current_version_id = v
  *   그 지식이 넘어간 턴은 답변 없이 질문만 접어 넣는다. 지식을 지우면 notes.ts 가 해당 요약을 바로 지운다.
  * - 요약에 실패해도 대화는 막지 않는다(있던 요약을 그대로 쓰거나 없이 답함).
  */
-async function memoryFor(task: TaskRow, userId: string, cutoff: string | null, provider: AiProvider): Promise<string | null> {
+type Memory = { summary: string; ids: string[] } | null;
+
+async function memoryFor(task: TaskRow, userId: string, cutoff: string | null, provider: AiProvider): Promise<Memory> {
   if (!cutoff) return null; // 최근 대화보다 오래된 대화가 없음
   const db = getPool();
   const m = await db.query(
@@ -137,7 +155,8 @@ async function memoryFor(task: TaskRow, userId: string, cutoff: string | null, p
      order by created_at asc`,
     [task.id, userId, cutoff, mem?.covered_until ?? null, MEMORY_REBUILD_TURNS],
   );
-  if (older.rowCount! < (mem ? MEMORY_FOLD_AT : 1)) return mem?.summary ?? null;
+  const kept: Memory = mem ? { summary: mem.summary, ids: mem.input_version_ids } : null;
+  if (older.rowCount! < (mem ? MEMORY_FOLD_AT : 1)) return kept;
   try {
     const raw = await callAi(() =>
       provider.recap({
@@ -146,7 +165,7 @@ async function memoryFor(task: TaskRow, userId: string, cutoff: string | null, p
       }),
     );
     const summary = raw && typeof raw === "object" ? (raw as Record<string, unknown>).summary : undefined;
-    if (typeof summary !== "string" || !summary.trim()) return mem?.summary ?? null;
+    if (typeof summary !== "string" || !summary.trim()) return kept;
     const ids = [...new Set([...(mem?.input_version_ids ?? []), ...older.rows.flatMap((t) => t.input_version_ids as string[])])];
     const last = older.rows[older.rows.length - 1].at_text as string;
     await db.query(
@@ -156,10 +175,10 @@ async function memoryFor(task: TaskRow, userId: string, cutoff: string | null, p
          input_version_ids = excluded.input_version_ids, updated_at = now()`,
       [task.id, userId, summary.trim().slice(0, MAX_MEMORY), last, ids],
     );
-    return summary.trim().slice(0, MAX_MEMORY);
+    return { summary: summary.trim().slice(0, MAX_MEMORY), ids };
   } catch (err) {
     console.error("chat memory failed", (err as Error)?.name);
-    return mem?.summary ?? null;
+    return kept;
   }
 }
 
@@ -169,7 +188,7 @@ async function answer(userId: string, task: TaskRow, requestId: string, question
   provider.drainUsage?.();
   try {
     const project = projectOf(task);
-    const { turns: history, cutoff } = await historyFor(task.id, userId, createdAt);
+    const { turns: history, cutoff, inherited } = await historyFor(task.id, userId, createdAt);
     // 대화 기억은 새 질문에만 쓴다(예전 답변을 다시 쓸 때는 그 시점 이후의 대화가 섞이지 않게)
     const memory = createdAt ? null : await memoryFor(task, userId, cutoff, provider);
     // 검색어는 앞에서부터 정해진 개수만 쓰므로(keywords.ts) 현재 질문을 맨 앞에, 그다음 최근 질문, 프로젝트 정보 순으로 둔다.
@@ -179,9 +198,17 @@ async function answer(userId: string, task: TaskRow, requestId: string, question
       .join("\n");
     const found = await findCandidates(task.team_id, query, { requireExternalAi: true, limit: MAX_KNOWLEDGE, includeAllIfAtMost: MAX_KNOWLEDGE, includeAiOnly: true });
     // 다시 쓰기라면 이전 입력 기록을 이번 입력으로 바꾼다 (지식이 없으면 비움)
-    const live = found.length
-      ? await recordInputs(requestId, task.team_id, found)
-      : (await db.query("update advice_requests set input_version_ids = '{}', candidate_count = 0 where id = $1", [requestId]), []);
+    const recorded = found.length ? await recordInputs(requestId, task.team_id, found) : [];
+    // 입력 기록 = 이번 검색으로 넘긴 지식 + 이어서 넘긴 이전 답변·대화 기억이 받았던 지식 (다시 쓰기라면 이전 기록을 바꾼다).
+    // 모델 호출 전에 기록해 두므로, 답을 만드는 사이에 지식이 지워지거나 범위가 좁아지면 이 요청도 무효화된다(notes.ts).
+    const inputIds = [...new Set([...recorded.map((c) => c.versionId), ...inherited, ...(memory?.ids ?? [])])];
+    await db.query(
+      "update advice_requests set input_version_ids = $2, candidate_count = $3 where id = $1",
+      [requestId, inputIds, found.length],
+    );
+    // 입력을 기록한 뒤 공개 범위를 다시 읽는다. 검색과 기록 사이에 범위가 바뀌었다면 바뀐 범위로 넘긴다
+    // (기록 뒤의 변경은 notes.ts 가 이 요청을 무효화한다).
+    const live = recorded.length ? await withCurrentVisibility(recorded) : [];
     const byRef = new Map<string, Candidate>(live.map((c, i) => [`N${i + 1}`, c]));
     const knowledge: CandidateForAi[] = [...byRef].map(([ref, c]) => ({
       ref,
@@ -190,12 +217,13 @@ async function answer(userId: string, task: TaskRow, requestId: string, question
       conditions: c.conditions,
       meeting: c.origin === "meeting" ? { title: c.title ?? "", date: c.meetingDate ?? "" } : null,
       aiOnly: c.aiOnly,
+      writtenOn: c.origin === "meeting" ? null : c.writtenOn,
     }));
 
     const kinds = new Map([...byRef].map(([ref, c]) => [ref, kindOf(c)] as const));
     const me = await db.query("select display_name from users where id = $1", [userId]);
     const askerName = (me.rows[0]?.display_name as string | undefined) ?? null;
-    const out = await generate(provider, { project, askerName, memory, history, knowledge, question }, kinds);
+    const out = await generate(provider, { project, askerName, today: todayKst(), memory: memory?.summary ?? null, history, knowledge, question }, kinds);
     const usedIds = out.used.map((r) => byRef.get(r)!.versionId);
     // 확정 직전 재확인은 실제로 반영한 지식만 대상으로 한다
     await finalize(requestId, userId, task.team_id, task.id, task.version, {
@@ -203,6 +231,8 @@ async function answer(userId: string, task: TaskRow, requestId: string, question
       dropped: out.dropped,
       emptyReason: null,
       inputIds: usedIds,
+      // 이전 답변·기억을 읽은 뒤 입력을 기록하기 전 사이에 원래 지식이 지워졌다면 저장하지 않는다
+      presentIds: inputIds,
     });
   } catch (err) {
     const code = errorCode(err);

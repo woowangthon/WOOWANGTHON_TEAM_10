@@ -15,7 +15,7 @@ import { AppError, badRequest, conflict, notFound } from "./errors.ts";
 import { contentHash, invalidateAdviceForNote, purgeAdviceForNote } from "./notes.ts";
 import { bool, text, uuid } from "./validate.ts";
 
-const MAX_MEETING = 10_000;
+export const MAX_MEETING = 10_000;
 const HISTORY_LIMIT = 30;
 const GONE = "탈퇴한 사용자";
 
