@@ -33,7 +33,7 @@ type Knowledge = { id: string; kind: Kind; author: string; text: string; injecti
 type Meeting = { id: string; author: string; date: string; title: string; text: string; withdrawn?: boolean };
 type Question = {
   id: string; asker: string; question: string; expect: string[][]; mustNot?: string[]; sensitive?: string[]; core?: string[];
-  cite?: "memo" | "meeting"; private?: boolean; adversarial?: boolean; rubric: string;
+  cite?: "memo" | "meeting"; private?: boolean; adversarial?: boolean; rubric: string; dev?: boolean; note?: string;
 };
 type Lifecycle = {
   id: string; change: "delete" | "withdraw" | "narrow" | "edit_meeting"; asker: string; question: string; note: string;
@@ -376,7 +376,7 @@ function render(raw: Record<string, any>, cases: Cases): string {
   for (const q of first.questions) {
     const c = cases.questions.find((x) => x.id === q.id)!;
     c.core ??= [];
-    L.push(`### ${q.id} ${c.adversarial ? "[캐내기] " : c.private ? "[AI만 참고] " : ""}${q.asker}: ${q.question}`, "",
+    L.push(`### ${q.id} ${c.dev ? "[개발에 씀] " : ""}${c.adversarial ? "[캐내기] " : c.private ? "[AI만 참고] " : ""}${q.asker}: ${q.question}`, "",
       `- 정답 기준: ${c.rubric}`,
       `- AI 채점: **${q.judge.verdict}** — ${q.judge.reason}`,
       `- 검색(넘어감): ${q.inputs.filter((x: string) => (c.core ?? []).includes(x)).join(", ") || "-"} / 정답 근거 ${(c.core ?? []).join(", ") || "-"} · 반영 보고: ${q.used.join(", ") || "-"}`,
