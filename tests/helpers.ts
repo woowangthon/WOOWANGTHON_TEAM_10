@@ -10,7 +10,7 @@ export function useCleanDb() {
   assertTestDatabase(process.env.DATABASE_URL);
   beforeEach(async () => {
     await getPool().query(
-      "truncate audit_log, chat_memories, note_sources, reactions, advice_items, advice_requests, note_versions, notes, tasks, memberships, teams, users cascade",
+      "truncate consumed_auth_tickets, audit_log, chat_memories, note_sources, reactions, advice_items, advice_requests, note_versions, notes, tasks, memberships, teams, users cascade",
     );
   });
   afterAll(closePool);
