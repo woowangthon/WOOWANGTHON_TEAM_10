@@ -149,19 +149,19 @@ function MeetingEditor({ value, onChange, onSave, onCancel, busy, saveLabel, sho
       <div className="row" style={{ flexWrap: "wrap" }}>
         <p style={{ flex: "1 1 200px", margin: "0 0 8px" }}>
           <label className="field-label" htmlFor="mt-title">회의 제목</label>
-          <input id="mt-title" placeholder="예: 발표 구성 회의" value={value.title} maxLength={200} onChange={(e) => onChange({ ...value, title: e.target.value })} />
+          <input id="mt-title" placeholder="예: 발표 구성 회의" value={value.title} maxLength={200} disabled={busy} onChange={(e) => onChange({ ...value, title: e.target.value })} />
         </p>
         <p style={{ flex: "0 0 170px", margin: "0 0 8px" }}>
           <label className="field-label" htmlFor="mt-date">날짜</label>
-          <input id="mt-date" type="date" value={value.date} onChange={(e) => onChange({ ...value, date: e.target.value })} />
+          <input id="mt-date" type="date" value={value.date} disabled={busy} onChange={(e) => onChange({ ...value, date: e.target.value })} />
         </p>
       </div>
       <label className="field-label" htmlFor="mt-text">회의 내용</label>
-      <textarea id="mt-text" rows={12} maxLength={10000} value={value.text} onChange={(e) => onChange({ ...value, text: e.target.value })} />
+      <textarea id="mt-text" rows={12} maxLength={10000} value={value.text} disabled={busy} onChange={(e) => onChange({ ...value, text: e.target.value })} />
       <p className="muted" style={{ margin: "4px 0" }}>{value.text.length.toLocaleString()} / 10,000자 · 회의 녹음 요약이나 메신저 대화를 붙여 넣어도 됩니다.</p>
       {showAiToggle && (
         <label className="check" style={{ margin: "8px 0" }}>
-          <input type="checkbox" checked={value.allowExternalAi} onChange={(e) => onChange({ ...value, allowExternalAi: e.target.checked })} />
+          <input type="checkbox" checked={value.allowExternalAi} disabled={busy} onChange={(e) => onChange({ ...value, allowExternalAi: e.target.checked })} />
           AI가 대화할 때 이 회의록을 참고해도 됨</label>
       )}
       <div className="row">
