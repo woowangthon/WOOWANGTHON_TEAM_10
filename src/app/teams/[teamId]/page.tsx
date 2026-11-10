@@ -1,6 +1,7 @@
 "use client";
 // 팀 화면 = 프로젝트 대화. 일반 AI 와 묻고 답하듯 쓰고, AI 는 팀에 공유된 메모를 조용히 참고한다.
 import { use, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "../../api-client.ts";
 import { AiBanner, TeamHeader, useAiConfig, type TeamInfo } from "../team-header.tsx";
 
@@ -30,12 +31,16 @@ const ERROR_TEXT: Record<string, string> = {
 
 export default function TeamChatPage({ params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = use(params);
+  const router = useRouter();
   const ai = useAiConfig();
   const [team, setTeam] = useState<TeamInfo | null>(null);
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [form, setForm] = useState<{ mode: "new" | "edit"; value: ProjectForm } | null>(null);
   const [error, setError] = useState("");
+  const [filter, setFilter] = useState("");
+  const [saving, setSaving] = useState(false);
+  const documentTitle = useRef<HTMLHeadingElement>(null);
 
   const loadProjects = async (select?: string) => {
     try {
@@ -52,17 +57,19 @@ export default function TeamChatPage({ params }: { params: Promise<{ teamId: str
     setProjectId(id);
     const url = new URL(location.href);
     if (id) url.searchParams.set("p", id); else url.searchParams.delete("p");
-    history.replaceState(null, "", url);
+    if (url.href !== location.href) router.replace(`${url.pathname}${url.search}`, { scroll: false });
   };
 
   const project = projects?.find((p) => p.id === projectId) ?? null;
+  const visibleProjects = projects?.filter((p) => p.title.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase())) ?? [];
   const noProjects = projects !== null && projects.length === 0;
   // 화면에 보이는 양식 값 (처음 프로젝트는 아무것도 고치지 않아도 미리 채운 이름으로 만들 수 있어야 한다)
   const editor = form ?? (noProjects ? { mode: "new" as const, value: { ...EMPTY_FORM, title: team ? `${team.name} 프로젝트` : "" } } : null);
 
   const saveProject = async () => {
-    if (!editor) return;
+    if (!editor || !editor.value.title.trim() || saving) return;
     setError("");
+    setSaving(true);
     try {
       if (editor.mode === "new") {
         const p = await api<Project>(`/api/teams/${teamId}/tasks`, { body: editor.value });
@@ -74,68 +81,100 @@ export default function TeamChatPage({ params }: { params: Promise<{ teamId: str
         await loadProjects(projectId);
       }
     } catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
   };
 
   return (
-    <main className="chat-page">
+    <main className="workspace">
       <TeamHeader teamId={teamId} active="chat" onLoaded={setTeam} />
-      <AiBanner ai={ai} />
-
-      {projects && projects.length > 0 && !form && (
-        <div className="project-bar">
-          <label className="project-pick">
-            <span className="muted">프로젝트</span>
-            <select aria-label="프로젝트 선택" value={projectId ?? ""} onChange={(e) => choose(e.target.value)}>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
-            </select>
-          </label>
-          <button className="small" onClick={() => setForm({ mode: "new", value: EMPTY_FORM })}>＋ 프로젝트 만들기</button>
-        </div>
-      )}
-      {project && !form && (
-        <p className="muted project-info">
-          {[project.purpose && `목표: ${project.purpose}`, project.audience && `대상: ${project.audience}`, project.constraints && `마감·조건: ${project.constraints}`]
-            .filter(Boolean).join(" · ") || "목표·대상·조건을 적어 두면 AI가 더 맞춤으로 답합니다."}
-          {" "}<button className="small" onClick={() => setForm({ mode: "edit", value: { title: project.title, purpose: project.purpose, audience: project.audience, constraints: project.constraints } })}>수정</button>
-        </p>
-      )}
-
-      {editor && (
-        <ProjectEditor
-          mode={editor.mode}
-          value={editor.value}
-          onChange={(value) => setForm({ mode: editor.mode, value })}
-          onSave={saveProject}
-          onCancel={form && !noProjects ? () => setForm(null) : undefined}
-          first={noProjects}
-        />
-      )}
-      {error && <p className="error" role="alert">{error}</p>}
-
-      {project && !form && <Chat key={project.id} project={project} aiReady={ai.available} />}
+      <section className="workspace-list" aria-label="프로젝트 목록">
+        <details className="pane-picker">
+          <summary>프로젝트 목록{project ? ` · ${project.title}` : ""}</summary>
+          <div className="pane-items">
+            <header className="pane-header">
+              <h2 className="pane-title">프로젝트</h2>
+              <p className="pane-subtitle">프로젝트마다 나만 보는 대화를 이어갑니다.</p>
+              <div className="pane-toolbar">
+                <button type="button" onClick={() => { setForm({ mode: "new", value: EMPTY_FORM }); setError(""); }}>새 프로젝트</button>
+              </div>
+              <label className="project-list-search">
+                <span className="field-label">프로젝트 찾기</span>
+                <input type="search" value={filter} placeholder="프로젝트 이름" onChange={(e) => setFilter(e.target.value)} />
+              </label>
+            </header>
+            {projects === null && <p className="pane-subtitle" role="status">프로젝트를 불러오는 중…</p>}
+            {noProjects && <p className="pane-subtitle">아직 프로젝트가 없습니다. 이름을 적어 첫 대화를 시작하세요.</p>}
+            {!!projects?.length && visibleProjects.length === 0 && <p className="pane-subtitle">일치하는 프로젝트가 없습니다.</p>}
+            {visibleProjects.map((p) => (
+              <a key={p.id} href={`/teams/${teamId}?p=${encodeURIComponent(p.id)}#project-title`} className={`list-item${p.id === projectId && !form ? " selected" : ""}`}
+                aria-current={p.id === projectId && !form ? "true" : undefined}
+                onClick={(e) => {
+                  if (form && !confirm("프로젝트 정보를 편집 중입니다. 저장하지 않고 이동할까요?")) e.preventDefault();
+                }}>
+                <span className="list-item-title">{p.title}</span>
+                <span className="list-item-preview">{p.purpose || "목표를 추가할 수 있습니다."}</span>
+                {p.constraints && <span className="list-item-meta">{p.constraints}</span>}
+              </a>
+            ))}
+          </div>
+        </details>
+      </section>
+      <section className="workspace-document" aria-label="프로젝트 대화">
+        <AiBanner ai={ai} />
+        {project && !form && (
+          <header className="document-header">
+            <div className="pane-toolbar">
+              <span className="document-meta">프로젝트 대화 · 나만 봄</span>
+              <button type="button" className="small" onClick={() => setForm({ mode: "edit", value: { title: project.title, purpose: project.purpose, audience: project.audience, constraints: project.constraints } })}>프로젝트 수정</button>
+            </div>
+            <h1 id="project-title" ref={documentTitle} className="document-title" tabIndex={-1}>{project.title}</h1>
+            {project.purpose || project.audience || project.constraints ? (
+              <dl className="project-context">
+                {project.purpose && <div><dt>목표</dt><dd>{project.purpose}</dd></div>}
+                {project.audience && <div><dt>대상</dt><dd>{project.audience}</dd></div>}
+                {project.constraints && <div><dt>마감·조건</dt><dd>{project.constraints}</dd></div>}
+              </dl>
+            ) : <p className="document-meta">목표·대상·조건을 적어 두면 AI가 대화할 때 참고합니다.</p>}
+          </header>
+        )}
+        {editor && (
+          <ProjectEditor
+            mode={editor.mode}
+            value={editor.value}
+            onChange={(value) => setForm({ mode: editor.mode, value })}
+            onSave={saveProject}
+            onCancel={form && !noProjects ? () => setForm(null) : undefined}
+            first={noProjects}
+            saving={saving}
+          />
+        )}
+        {error && <p className="error document-body" role="alert">{error}</p>}
+        {projects === null && !error && <p className="document-body muted" role="status">대화를 불러오는 중…</p>}
+        {project && !form && <Chat key={project.id} project={project} aiReady={ai.available} />}
+      </section>
     </main>
   );
 }
 
-function ProjectEditor({ mode, value, onChange, onSave, onCancel, first }: {
-  mode: "new" | "edit"; value: ProjectForm; onChange: (v: ProjectForm) => void; onSave: () => void; onCancel?: () => void; first: boolean;
+function ProjectEditor({ mode, value, onChange, onSave, onCancel, first, saving }: {
+  mode: "new" | "edit"; value: ProjectForm; onChange: (v: ProjectForm) => void; onSave: () => void; onCancel?: () => void; first: boolean; saving: boolean;
 }) {
   return (
-    <div className="card">
-      <h2 style={{ marginTop: 0 }}>{mode === "new" ? "프로젝트 만들기" : "프로젝트 수정"}</h2>
+    <form className="document-body project-editor" onSubmit={(e) => { e.preventDefault(); onSave(); }}>
+      <h1 className="document-title">{mode === "new" ? "새 프로젝트" : "프로젝트 수정"}</h1>
       {first && <p className="muted">프로젝트는 팀이 함께 만드는 결과물 하나입니다. 적어 둔 목표·대상·조건은 AI가 대화할 때 맥락으로 씁니다. 이름만 적어도 시작할 수 있어요.</p>}
       {FIELDS.map((f) => (
         <p key={f.key}>
           <label className="field-label" htmlFor={`pf-${f.key}`}>{f.label}{f.key === "title" ? "" : " (선택)"}</label>
-          <input id={`pf-${f.key}`} placeholder={f.placeholder} value={value[f.key]} maxLength={f.max}
+          <input id={`pf-${f.key}`} placeholder={f.placeholder} value={value[f.key]} maxLength={f.max} required={f.key === "title"} disabled={saving}
             onChange={(e) => onChange({ ...value, [f.key]: e.target.value })} />
         </p>
       ))}
       <div className="row">
-        <button className="primary" disabled={!value.title.trim()} onClick={onSave}>{mode === "new" ? "만들고 대화 시작" : "저장"}</button>
-        {onCancel && <button onClick={onCancel}>취소</button>}
+        <button className="primary" type="submit" disabled={!value.title.trim() || saving}>{saving ? "저장 중…" : mode === "new" ? "만들고 대화 시작" : "저장"}</button>
+        {onCancel && <button type="button" disabled={saving} onClick={onCancel}>취소</button>}
       </div>
-    </div>
+    </form>
   );
 }
 
@@ -145,6 +184,7 @@ function Chat({ project, aiReady }: { project: Project; aiReady: boolean }) {
   const [question, setQuestion] = useState("");
   const [error, setError] = useState("");
   const end = useRef<HTMLDivElement>(null);
+  const questionBox = useRef<HTMLTextAreaElement>(null);
 
   const refreshing = useRef(false);
   const load = () => api<Turn[]>(`/api/tasks/${project.id}/chat`).then(setTurns, (e) => setError((e as Error).message));
@@ -168,7 +208,7 @@ function Chat({ project, aiReady }: { project: Project; aiReady: boolean }) {
 
   const ask = async () => {
     const q = question.trim();
-    if (!q || pending) return;
+    if (!q || pending || !aiReady) return;
     setPending(q); setQuestion(""); setError("");
     try {
       const t = await api<Turn>(`/api/tasks/${project.id}/chat`, { body: { question: q, clientRequestId: crypto.randomUUID() } });
@@ -180,51 +220,62 @@ function Chat({ project, aiReady }: { project: Project; aiReady: boolean }) {
   };
 
   return (
-    <section className="chat" aria-label="AI 대화">
+    <section className="chat document-body" aria-label="AI 대화">
       <div className="chat-log" aria-live="polite">
+        {turns === null && !error && <p className="muted" role="status">대화를 불러오는 중…</p>}
         {turns?.length === 0 && !pending && (
-          <div className="chat-empty muted">
-            <p>프로젝트에 대해 무엇이든 물어보세요. 예:</p>
-            <ul>
-              <li>발표 첫 장은 어떻게 시작하면 좋을까?</li>
-              <li>두 실험 결과를 한 그래프로 비교하려면?</li>
-              <li>마감까지 남은 일을 정리해 줘</li>
-            </ul>
+          <div className="chat-empty">
+            <h2>첫 질문</h2>
+            <p className="muted">프로젝트에 대해 물어보세요. 질문과 답변은 나에게만 보입니다.</p>
+            <div className="question-suggestions" aria-label="예시 질문">
+              {["발표 첫 장은 어떻게 시작하면 좋을까?", "두 실험 결과를 한 그래프로 비교하려면?", "마감까지 남은 일을 정리해 줘"].map((example) => (
+                <button type="button" className="question-example" key={example} disabled={!aiReady}
+                  onClick={() => { setQuestion(example); questionBox.current?.focus(); }}><span>{example}</span><span className="example-arrow" aria-hidden="true">↗</span></button>
+              ))}
+            </div>
           </div>
         )}
         {turns?.map((t) => (
-          <div key={t.id}>
-            <div className="bubble me">{t.question}</div>
+          <article key={t.id} className="chat-turn">
+            <div className="chat-speaker">나 <time dateTime={t.createdAt}>{fmtTime(t.createdAt)}</time></div>
+            <p className="chat-question">{t.question}</p>
             <Answer t={t} />
-          </div>
+          </article>
         ))}
         {pending && (
-          <div>
-            <div className="bubble me">{pending}</div>
-            <div className="bubble ai muted">답변 작성 중…</div>
-          </div>
+          <article className="chat-turn">
+            <div className="chat-speaker">나</div>
+            <p className="chat-question">{pending}</p>
+            <ChatWaiting />
+          </article>
         )}
         <div ref={end} />
       </div>
       {error && <p className="error" role="alert">{error}</p>}
-      <div className="chat-input">
-        <textarea aria-label="질문" rows={2} maxLength={2000} value={question} disabled={!aiReady}
-          placeholder={aiReady ? "메시지를 입력하세요 (Enter 보내기, Shift+Enter 줄바꿈)" : "AI가 연결되지 않았습니다"}
+      <form className="chat-composer" onSubmit={(e) => { e.preventDefault(); ask(); }}>
+        <label className="field-label" htmlFor="chat-question">프로젝트에 질문하기</label>
+        <textarea ref={questionBox} id="chat-question" rows={3} maxLength={2000} value={question} disabled={!aiReady}
+          aria-describedby="chat-composer-help"
+          placeholder={aiReady ? "궁금한 내용을 적어 주세요." : "AI가 연결되지 않았습니다"}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); ask(); } }} />
-        <button className="primary" disabled={!aiReady || !question.trim() || !!pending} onClick={ask}>보내기</button>
-      </div>
+        <div className="composer-footer">
+          <span className="composer-help muted" id="chat-composer-help">Enter 보내기 · Shift+Enter 줄바꿈</span>
+          <button className="primary" type="submit" disabled={!aiReady || !question.trim() || !!pending}>{pending ? "답변 작성 중" : "보내기"}</button>
+        </div>
+      </form>
       <p className="muted chat-note">AI 답변은 틀릴 수 있습니다. 대화는 나에게만 보입니다.</p>
     </section>
   );
 }
 
 function Answer({ t }: { t: Turn }) {
-  if (t.status === "pending") return <div className="bubble ai muted">답변 작성 중…</div>;
-  if (t.status !== "ok" || !t.answer) return <div className="bubble ai error">{ERROR_TEXT[t.error ?? "internal"] ?? ERROR_TEXT.internal}</div>;
+  if (t.status === "pending") return <ChatWaiting />;
+  if (t.status !== "ok" || !t.answer) return <div className="chat-answer error" role="alert">{ERROR_TEXT[t.error ?? "internal"] ?? ERROR_TEXT.internal}</div>;
   return (
-    <div className="bubble ai">
-      {t.answer}
+    <div className="chat-answer">
+      <div className="chat-speaker">AI 답변</div>
+      <div className="answer-text">{t.answer}</div>
       {t.sources.length > 0 && (
         <details className="sources">
           <summary>참고한 팀 지식 {t.sources.length}개</summary>
@@ -233,6 +284,11 @@ function Answer({ t }: { t: Turn }) {
       )}
     </div>
   );
+}
+
+/** 처음 답할 때와 기존 답변을 다시 쓸 때 같은 문구를 쓴다. 참고 자료의 존재·변경 사유는 표시하지 않는다. */
+function ChatWaiting() {
+  return <div className="chat-wait" role="status">답변을 작성하고 있습니다… <span>약 10초가 걸릴 수 있어요.</span></div>;
 }
 
 /** 출처 원문: 길면 앞부분만 보여주고 「전체 보기」로 펼친다 (회의록은 10,000자까지) */
@@ -251,4 +307,9 @@ function SourceCard({ s }: { s: Source }) {
 const fmtDay = (d: string) => {
   const [, m, day] = d.split("-").map(Number);
   return `${m}월 ${day}일`;
+};
+
+const fmtTime = (value: string) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 };
