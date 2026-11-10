@@ -1,5 +1,7 @@
 // 서버 시작 시 설정을 검사한다 (src/instrumentation.ts 에서 호출).
 // 잘못된 설정은 요청마다 알 수 없는 500 오류를 내는 대신, 시작 단계에서 분명한 메시지로 멈추게 한다.
+import { pendingMigrations, REQUIRED_MIGRATIONS } from "./schema-version.ts";
+
 type Env = Record<string, string | undefined>;
 
 export type StartupProblem = { fatal: boolean; message: string };
@@ -64,21 +66,43 @@ export function checkEnvironment(env: Env): StartupProblem[] {
   return problems;
 }
 
-/** DB 연결과 마이그레이션 적용 여부를 확인한다. 실패해도 예외를 던지지 않고 결과만 돌려준다. */
-export async function checkDatabase(): Promise<{ ok: boolean; message: string }> {
+export type DatabaseCheck = {
+  ok: boolean;
+  /** ok: 이 코드가 요구하는 마이그레이션이 모두 적용됨 · migrations_pending: 일부가 빠짐 · no_schema: 표가 없음 · unreachable: 연결 실패 */
+  state: "ok" | "migrations_pending" | "no_schema" | "unreachable";
+  /** 적용되지 않은 마이그레이션 파일명 */
+  pending: string[];
+  message: string;
+};
+
+/**
+ * DB 연결과, 이 코드가 요구하는 마이그레이션이 모두 적용됐는지 확인한다. 실패해도 예외를 던지지 않고 결과만 돌려준다.
+ *
+ * 연결만 확인하면 "DB 는 살아 있지만 새 코드가 쓰는 열·표가 없는" 상태를 정상으로 보고한다
+ * (2026-11-10: 008 이 빠진 운영 DB 에서 상태 점검은 200, 로그인·가입은 500). 그래서 적용 기록을 요구 목록과 비교한다.
+ * required 는 테스트에서만 바꾼다.
+ */
+export async function checkDatabase(required: readonly string[] = REQUIRED_MIGRATIONS): Promise<DatabaseCheck> {
   try {
     const { getPool } = await import("./db.ts");
-    const r = await getPool().query(
-      "select to_regclass('public.notes') is not null as has_schema, (select count(*) from schema_migrations)::int as applied",
-    );
-    const row = r.rows[0];
-    if (!row?.has_schema) return { ok: false, message: "DB 에 테이블이 없습니다. `npm run db:migrate` 를 먼저 실행하세요." };
-    return { ok: true, message: `DB 연결 확인 (마이그레이션 ${row.applied}개 적용됨)` };
+    const r = await getPool().query("select name from schema_migrations");
+    const pending = pendingMigrations(r.rows.map((row) => row.name as string), required);
+    if (pending.length) {
+      return {
+        ok: false,
+        state: "migrations_pending",
+        pending,
+        message: `DB 마이그레이션 ${pending.length}개가 적용되지 않았습니다 (${pending.join(", ")}). 이 서버가 연결한 DB 에 \`npm run db:migrate\` 를 실행하세요.`,
+      };
+    }
+    return { ok: true, state: "ok", pending: [], message: `DB 연결 확인 (마이그레이션 ${r.rowCount}개 적용됨)` };
   } catch (err) {
     const name = (err as Error)?.name ?? "Error";
     // schema_migrations 자체가 없으면 42P01 (undefined_table)
     const code = (err as { code?: string })?.code;
-    if (code === "42P01") return { ok: false, message: "DB 에 테이블이 없습니다. `npm run db:migrate` 를 먼저 실행하세요." };
-    return { ok: false, message: `DB 에 연결할 수 없습니다 (${name}). DATABASE_URL 과 DB 상태를 확인하세요.` };
+    if (code === "42P01") {
+      return { ok: false, state: "no_schema", pending: [...required], message: "DB 에 테이블이 없습니다. `npm run db:migrate` 를 먼저 실행하세요." };
+    }
+    return { ok: false, state: "unreachable", pending: [], message: `DB 에 연결할 수 없습니다 (${name}). DATABASE_URL 과 DB 상태를 확인하세요.` };
   }
 }

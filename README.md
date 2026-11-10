@@ -166,18 +166,28 @@ GitHub 에 푸시하면 `.github/workflows/ci.yml` 이 타입 검사·테스트�
 ## 배포 (외부 접속 URL 만들기)
 
 1. **DB**: [Neon](https://neon.tech) 또는 [Supabase](https://supabase.com) 에서 무료 PostgreSQL 을 만들고 접속 주소(`postgres://...`)를 복사한다.
-2. 로컬에서 그 주소로 표를 만든다: `DATABASE_URL=<주소> npm run db:migrate`
-   새 마이그레이션(`db/migrations/00N_*.sql`)이 추가된 버전을 배포할 때는 **배포 전에** 같은 명령을 다시 실행한다. 이미 적용한 파일은 건너뛴다.
+2. 로컬에서 그 주소로 표를 만든다: `DATABASE_URL=<주소> npm run db:migrate` (처음 한 번)
+   그 뒤에 추가되는 마이그레이션(`db/migrations/00N_*.sql`)은 **Vercel 운영 배포의 빌드 단계가 자동으로 적용한다**(`npm run build` → `scripts/predeploy.ts`). 운영 배포가 실제로 쓰는 `DATABASE_URL`에 적용하므로 다른 DB에 잘못 적용할 일이 없다. 적용에 실패하면 빌드가 멈추고 이전 배포본이 계속 서비스한다. 미리보기 배포와 로컬·CI 빌드는 DB를 건드리지 않는다. Vercel의 Build Command는 기본값(`npm run build`)으로 둔다. 직접 적용하려면 Vercel 환경변수에 `SKIP_DEPLOY_MIGRATIONS=1`을 넣고 배포 전에 위 명령을 실행한다.
 3. **웹**: [Vercel](https://vercel.com) 에서 이 GitHub 저장소를 가져온다(Import). Framework 는 Next.js 로 자동 인식된다.
 4. Vercel 프로젝트 Settings → Environment Variables 에 다음을 넣는다.
    - `DATABASE_URL` = 1번 주소
    - `SESSION_SECRET` = `openssl rand -base64 36` 으로 만든 값
    - `AI_PROVIDER` = `openai`, `OPENAI_API_KEY` = OpenAI 프로젝트 키 (월 예산 한도를 건 것), `OPENAI_REASONING_EFFORT` = `none`
      (AI 없이 운영하려면 `AI_PROVIDER` = `none`)
-5. Deploy 한 뒤 `https://<프로젝트>.vercel.app/api/health` 가 `{"ok":true,"db":"ok"}` 를 돌려주는지 확인한다.
+5. Deploy 한 뒤 배포 확인을 돌린다(아래 「배포 확인」). `https://<프로젝트>.vercel.app/api/health`는 DB 연결뿐 아니라 **이 코드가 요구하는 마이그레이션이 그 DB에 모두 적용됐는지**도 본다. 정상이면 `{"ok":true,"db":"ok",…}`, 빠진 것이 있으면 503과 `"db":"migrations_pending"`을 돌려준다. `commit`은 지금 서비스 중인 배포본의 커밋이다.
 6. **팀 외부 사람**(심사위원 등)이 접속·가입할 수 있는지 다른 기기·네트워크에서 확인한다.
 
 키는 저장소·채팅·문서에 절대 넣지 않는다. 자세한 규칙은 `docs/보안_점검.md` 를 본다.
+
+### 배포 확인 (병합할 때마다 자동)
+
+`main`에 병합하면 GitHub Actions의 「배포 확인」(`.github/workflows/deploy-check.yml`)이 운영 배포본을 확인한다. 배포본이 그 커밋으로 바뀌었는지, DB 연결과 마이그레이션이 정상인지, 로그인 경로가 서버 오류 없이 응답하는지(없는 코드·없는 이메일로 로그인하면 401)를 본다. 계정을 만들지 않고 모델도 부르지 않는다. 빨간색이면 병합이 끝난 것이 아니다. 운영 주소가 바뀌면 저장소 Actions 변수 `PRODUCTION_URL`에 넣는다.
+
+직접 돌릴 때(제출할 커밋과 배포본이 같은지 볼 때도 쓴다):
+
+```bash
+npm run deploy:check -- --url=https://<프로젝트>.vercel.app --commit=<제출할 커밋 해시>
+```
 
 ### 배포 점검 (제출 전마다)
 
@@ -193,7 +203,8 @@ npm run smoke -- --url=https://<프로젝트>.vercel.app
 
 ```
 db/migrations/     DB 표 정의 (번호 순서대로 한 번씩 적용)
-scripts/migrate.ts 마이그레이션 실행기
+scripts/migrate.ts 마이그레이션 실행기 (운영 배포에서는 scripts/predeploy.ts 가 빌드 단계에서 부른다)
+scripts/deploy-check.ts  배포 확인 (계정을 만들지 않음) · scripts/smoke.ts 배포 점검 (전체 흐름)
 src/app/           화면과 API 경로 (Next.js App Router)
 src/lib/           서버 로직: 인증, 팀, 메모, 검색, 조언, AI 연결 지점(ai/)
 src/instrumentation.ts  서버 시작 시 설정·DB 점검

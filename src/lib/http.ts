@@ -40,6 +40,19 @@ export async function readJson(req: Request): Promise<Record<string, unknown>> {
   }
 }
 
+/**
+ * 운영 로그에 남길 오류 요약. 메시지·SQL·본문은 넣지 않고, 오류 종류와 다섯 글자 오류 코드만 남긴다.
+ * PostgreSQL 오류에는 SQLSTATE(예: 42703 없는 열, 42P01 없는 표)가 code 로 붙는다. 이 코드가 없으면
+ * "코드가 기대하는 열·표가 DB 에 없는" 장애가 로그에 `error` 한 단어로만 남아 원인을 알 수 없다.
+ */
+export function errorSummary(err: unknown): string {
+  const name = typeof (err as Error)?.name === "string" && (err as Error).name ? (err as Error).name : "Error";
+  const code = (err as { code?: unknown })?.code;
+  if (typeof code !== "string" || !/^[0-9A-Z]{5}$/.test(code)) return name;
+  const hint = code === "42703" || code === "42P01" ? " (DB 에 없는 열·표를 썼음: 마이그레이션 적용 여부를 확인)" : "";
+  return `${name} ${code}${hint}`;
+}
+
 type Handler<P> = (req: Request, params: P) => Promise<unknown>;
 
 export function route<P = Record<string, never>>(handler: Handler<P>) {
@@ -53,8 +66,8 @@ export function route<P = Record<string, never>>(handler: Handler<P>) {
       if (err instanceof AppError) {
         return NextResponse.json({ error: err.code, message: err.message }, { status: err.status });
       }
-      // 본문·SQL 은 로그에 남기지 않고 종류만 남긴다 (개발 중에는 메시지도 함께)
-      const detail = process.env.NODE_ENV === "production" ? (err as Error)?.name : String((err as Error)?.message ?? err);
+      // 본문·SQL 은 로그에 남기지 않고 종류와 DB 오류 코드만 남긴다 (개발 중에는 메시지도 함께)
+      const detail = process.env.NODE_ENV === "production" ? errorSummary(err) : String((err as Error)?.message ?? err);
       console.error("unhandled", req.method, new URL(req.url).pathname, detail);
       return NextResponse.json({ error: "internal", message: "일시적인 오류가 발생했습니다." }, { status: 500 });
     }

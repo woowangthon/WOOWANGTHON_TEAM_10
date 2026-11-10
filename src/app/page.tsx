@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { api } from "./api-client.ts";
+import { api, ApiError } from "./api-client.ts";
 import { MemoFab } from "./memo-fab.tsx";
 import { ThemeToggle } from "./theme-toggle.tsx";
 import { Login, DeleteAccount, LoginCodeSettings, type AccountMe } from "./account-access.tsx";
@@ -10,11 +10,38 @@ type Team = { id: string; name: string; role: string; member_count: number };
 
 export default function Home() {
   const [me, setMe] = useState<Me | null | undefined>(undefined);
-  useEffect(() => {
-    api<Me>("/api/auth/me").then(setMe, () => setMe(null));
-  }, []);
+  const [failed, setFailed] = useState(false);
+  const load = () => {
+    setFailed(false); setMe(undefined);
+    // 로그인하지 않은 것(401)만 시작 화면으로 보낸다. 서버 오류나 연결 실패를 "로그인 안 됨"으로 다루면
+    // 로그인한 사람에게 시작 화면이 다시 보여, 계정이 사라진 것처럼 보이거나 새 계정을 또 만들게 된다.
+    api<Me>("/api/auth/me").then(setMe, (error) => {
+      if (error instanceof ApiError && error.status === 401) setMe(null);
+      else setFailed(true);
+    });
+  };
+  useEffect(load, []);
+  if (failed) return <AccountUnavailable onRetry={load} />;
   if (me === undefined) return <main className="muted">불러오는 중…</main>;
   return me ? <Teams me={me} /> : <Login onDone={() => location.reload()} />;
+}
+
+/** 계정 정보를 불러오지 못했을 때. 로그인 상태를 알 수 없으므로 시작 화면 대신 다시 시도하게 한다. */
+function AccountUnavailable({ onRetry }: { onRetry: () => void }) {
+  return (
+    <main className="account-layout">
+      <aside className="account-sidebar"><div className="sidebar-brand">팀 기억 조언자</div></aside>
+      <section className="account-content">
+        <div className="auth-form">
+          <p className="document-meta">팀 기억 조언자</p>
+          <h1>지금은 계정 정보를 불러올 수 없습니다</h1>
+          <p className="error" role="alert">서버나 연결에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요.</p>
+          <p className="account-help">로그인 상태와 기록은 그대로일 수 있습니다. 이미 계정이 있다면 새로 시작하지 말고 기다려 주세요.</p>
+          <div className="auth-actions"><button className="primary" type="button" onClick={onRetry}>다시 시도</button></div>
+        </div>
+      </section>
+    </main>
+  );
 }
 
 function Teams({ me }: { me: Me }) {
