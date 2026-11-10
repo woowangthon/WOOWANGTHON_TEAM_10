@@ -22,7 +22,9 @@ export function MemoFab({ teamId, teams }: { teamId?: string; teams?: TeamOption
   useEffect(() => { if (teamId) setTarget(teamId); else if (!target && teams?.[0]) setTarget(teams[0].id); }, [teamId, teams]);
   useEffect(() => {
     if (!open) return;
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : trigger.current;
+    // 클릭해도 버튼에 포커스가 가지 않는 브라우저(Safari)에서는 body 가 잡히므로, 그때는 '메모하기' 버튼으로 돌아간다
+    const active = document.activeElement;
+    const previousFocus = active instanceof HTMLElement && active !== document.body ? active : trigger.current;
     box.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); setOpen(false); return; }

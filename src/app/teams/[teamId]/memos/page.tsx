@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../../api-client.ts";
 import { MEMO_SAVED_EVENT } from "../../../memo-fab.tsx";
+import { usePanePicker } from "../../../pane-picker.ts";
 import { AiBanner, TeamHeader, useAiConfig } from "../../team-header.tsx";
 
 type MyMemo = { id: string; versionId: string; text: string; createdAt: string; inShared: boolean };
@@ -38,12 +39,16 @@ export default function MemosPage({ params }: { params: Promise<{ teamId: string
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const documentPane = useRef<HTMLElement>(null);
+  const { picker, closeOnMobile } = usePanePicker();
   const editDirty = useRef(false);
+  // 공유하기 전의 정리문도 저장되지 않은 내용이다. 화면을 떠나기 전에 확인한다.
+  const draftOpen = useRef(false);
+  draftOpen.current = !!draft;
   const reportDirty = useCallback((dirty: boolean) => { editDirty.current = dirty; }, []);
   const canLeaveEditor = () => !editDirty.current || confirm("저장하지 않은 수정 내용이 있습니다. 저장하지 않고 이동할까요?");
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!editDirty.current) return;
+      if (!editDirty.current && !draftOpen.current) return;
       event.preventDefault(); event.returnValue = "";
     };
     window.addEventListener("beforeunload", onBeforeUnload);
@@ -104,13 +109,10 @@ export default function MemosPage({ params }: { params: Promise<{ teamId: string
     if (next === filter || !canLeaveEditor()) return;
     setFilter(next); setFocusId(null);
   };
-  const selectMemo = (id: string, button: HTMLButtonElement) => {
+  const selectMemo = (id: string) => {
     if (id !== selectedId && !canLeaveEditor()) return;
     setFocusId(id);
-    if (window.matchMedia("(max-width: 760px)").matches) {
-      const picker = button.closest<HTMLDetailsElement>("details.pane-picker");
-      if (picker) picker.open = false;
-    }
+    closeOnMobile();
     requestAnimationFrame(() => documentPane.current?.querySelector<HTMLHeadingElement>(".document-title")?.focus());
   };
 
@@ -119,7 +121,7 @@ export default function MemosPage({ params }: { params: Promise<{ teamId: string
       <TeamHeader teamId={teamId} active="memos" />
       <section className="workspace-list" aria-label="메모 목록">
         <div className="pane-header"><h1 className="pane-title">메모</h1><p className="pane-subtitle">기록을 고르고, 내용을 읽어 보세요.</p></div>
-        <details className="pane-picker">
+        <details ref={picker} className="pane-picker">
           <summary>메모 목록 · {filterLabel}</summary>
           <div className="pane-items">
             <div className="pane-toolbar" aria-label="메모 범위">{FILTERS.map((f) => <button key={f.key} className={filter === f.key ? "on" : ""} aria-pressed={filter === f.key} disabled={!!draft || !!busy} onClick={() => changeFilter(f.key)}>{f.label}</button>)}</div>
@@ -128,8 +130,8 @@ export default function MemosPage({ params }: { params: Promise<{ teamId: string
             {data && visibleIds.length === 0 && <p className="pane-subtitle">{filter === "mine" ? "아직 메모가 없습니다. 메모하기로 생각을 남겨 보세요." : filter === "team" ? "아직 팀에 공유된 메모가 없습니다." : "아직 직접 저장한 정리가 없습니다."}</p>}
             {filter === "mine" ? rawMemos.map((m) => <div key={m.id} className={`list-item memo-index-item ${selectedId === m.id ? "selected" : ""}`}>
               <input type="checkbox" className="pick" aria-label={`${titleOf(m.text)} 정리 대상으로 선택`} checked={picked.has(m.id)} disabled={!!draft || !!busy} onChange={() => toggle(m.id)} />
-              <button className="list-item-content" aria-current={selectedId === m.id ? "true" : undefined} disabled={!!draft || !!busy} onClick={(e) => selectMemo(m.id, e.currentTarget)}><span className="list-item-title">{titleOf(m.text)}</span><span className="list-item-preview">{previewOf(m.text)}</span><span className="list-item-meta">{fmt(m.createdAt)}{m.inShared ? " · 정리에 포함됨" : ""}</span></button>
-            </div>) : sharedMemos.map((s) => <button key={s.id} className={`list-item ${selectedId === s.id ? "selected" : ""}`} aria-current={selectedId === s.id ? "true" : undefined} disabled={!!busy} onClick={(e) => selectMemo(s.id, e.currentTarget)}><span className="list-item-title">{titleOf(s.text)}</span><span className="list-item-preview">{previewOf(s.text)}</span><span className="list-item-meta">{fmt(s.updatedAt)}{filter === "authored" ? ` · ${s.visibility === "ai_only" ? "AI만 참고" : "팀 공개"}${s.state === "withdrawn" ? " · 철회됨" : s.state === "draft" ? " · 공유 안 됨" : ""}` : ` · ${s.authorName}`}</span></button>)}
+              <button className="list-item-content" aria-current={selectedId === m.id ? "true" : undefined} disabled={!!draft || !!busy} onClick={() => selectMemo(m.id)}><span className="list-item-title">{titleOf(m.text)}</span><span className="list-item-preview">{previewOf(m.text)}</span><span className="list-item-meta">{fmt(m.createdAt)}{m.inShared ? " · 정리에 포함됨" : ""}</span></button>
+            </div>) : sharedMemos.map((s) => <button key={s.id} className={`list-item ${selectedId === s.id ? "selected" : ""}`} aria-current={selectedId === s.id ? "true" : undefined} disabled={!!busy} onClick={() => selectMemo(s.id)}><span className="list-item-title">{titleOf(s.text)}</span><span className="list-item-preview">{previewOf(s.text)}</span><span className="list-item-meta">{fmt(s.updatedAt)}{filter === "authored" ? ` · ${s.visibility === "ai_only" ? "AI만 참고" : "팀 공개"}${s.state === "withdrawn" ? " · 철회됨" : s.state === "draft" ? " · 공유 안 됨" : ""}` : ` · ${s.authorName}`}</span></button>)}
             {filter === "mine" && rawMemos.length > 0 && !draft && <div className="pane-selection"><p className="pane-subtitle">{picked.size ? `내 메모 ${picked.size}개 선택` : "체크한 메모를 모아 정리할 수 있습니다."}</p><div className="pane-toolbar"><button className="primary" disabled={!picked.size || !ai.available || !!busy} onClick={summarize}>{busy === "summarize" ? "정리하는 중…" : "AI로 정리"}</button><button disabled={!picked.size || !!busy} onClick={writeMyself}>직접 정리</button></div><p className="pane-subtitle">AI로 정리하면 선택한 메모만 AI에 보냅니다.</p></div>}
           </div>
         </details>

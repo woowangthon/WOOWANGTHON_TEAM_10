@@ -64,7 +64,7 @@ export function useAiConfig() {
 }
 
 export function AiBanner({ ai }: { ai: AiConfig }) {
-  if (ai.fake) return <div className="banner preview-banner">검토용 미리보기 · 가상 데이터와 예시 답변입니다. 실제 AI를 호출하지 않습니다.</div>;
+  if (ai.fake) return <div className="banner preview-banner">개발용 가짜 응답 모드입니다. 화면의 AI 결과는 실제 AI가 만든 것이 아닙니다.</div>;
   if (ai.provider === "misconfigured") return <div className="banner">AI 설정이 잘못되어 AI 기능을 쓸 수 없습니다. 운영자에게 알려 주세요.</div>;
   if (!ai.available) return <div className="banner">AI가 연결되지 않아 대화와 AI 정리를 쓸 수 없습니다. 메모는 쓰고 직접 정리해 공유할 수 있습니다.</div>;
   return null;

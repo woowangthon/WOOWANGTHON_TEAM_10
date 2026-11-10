@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./api-client.ts";
 import { MemoFab } from "./memo-fab.tsx";
+import { ThemeToggle } from "./theme-toggle.tsx";
 
 type Me = { id: string; email: string; displayName: string };
 type Team = { id: string; name: string; role: string; member_count: number };
@@ -149,7 +150,7 @@ function Teams({ me }: { me: Me }) {
         <div className="sidebar-brand">팀 기억 조언자</div>
         <nav className="sidebar-nav" aria-label="계정 메뉴"><a href="#team-list" aria-current="page">내 팀</a><a href="#create-team">새 팀 만들기</a><a href="#join-team">초대 코드로 참여</a><a href="#account-settings">계정</a></nav>
         <MemoFab teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
-        <div className="sidebar-account"><p>{me.displayName}</p><button className="small" onClick={() => api("/api/auth/logout", { body: {} }).then(() => location.reload())}>로그아웃</button></div>
+        <div className="sidebar-account"><p>{me.displayName}</p><ThemeToggle /><button className="small" onClick={() => api("/api/auth/logout", { body: {} }).then(() => location.reload())}>로그아웃</button></div>
       </aside>
       <section className="workspace-list" id="team-list" aria-label="내 팀 목록">
         <div className="pane-header"><h1 className="pane-title">내 팀</h1><p className="pane-subtitle">함께 기록할 팀을 고르세요.</p></div>

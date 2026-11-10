@@ -3,6 +3,7 @@
 import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../../api-client.ts";
+import { usePanePicker } from "../../pane-picker.ts";
 import { AiBanner, TeamHeader, useAiConfig, type TeamInfo } from "../team-header.tsx";
 
 type Project = { id: string; title: string; purpose: string; audience: string; constraints: string; version: number };
@@ -41,6 +42,7 @@ export default function TeamChatPage({ params }: { params: Promise<{ teamId: str
   const [filter, setFilter] = useState("");
   const [saving, setSaving] = useState(false);
   const documentTitle = useRef<HTMLHeadingElement>(null);
+  const { picker, closeOnMobile } = usePanePicker();
 
   const loadProjects = async (select?: string) => {
     try {
@@ -88,14 +90,14 @@ export default function TeamChatPage({ params }: { params: Promise<{ teamId: str
     <main className="workspace">
       <TeamHeader teamId={teamId} active="chat" onLoaded={setTeam} />
       <section className="workspace-list" aria-label="프로젝트 목록">
-        <details className="pane-picker">
+        <details ref={picker} className="pane-picker">
           <summary>프로젝트 목록{project ? ` · ${project.title}` : ""}</summary>
           <div className="pane-items">
             <header className="pane-header">
               <h2 className="pane-title">프로젝트</h2>
               <p className="pane-subtitle">프로젝트마다 나만 보는 대화를 이어갑니다.</p>
               <div className="pane-toolbar">
-                <button type="button" onClick={() => { setForm({ mode: "new", value: EMPTY_FORM }); setError(""); }}>새 프로젝트</button>
+                <button type="button" onClick={() => { setForm({ mode: "new", value: EMPTY_FORM }); setError(""); closeOnMobile(); }}>새 프로젝트</button>
               </div>
               <label className="project-list-search">
                 <span className="field-label">프로젝트 찾기</span>
@@ -109,7 +111,14 @@ export default function TeamChatPage({ params }: { params: Promise<{ teamId: str
               <a key={p.id} href={`/teams/${teamId}?p=${encodeURIComponent(p.id)}#project-title`} className={`list-item${p.id === projectId && !form ? " selected" : ""}`}
                 aria-current={p.id === projectId && !form ? "true" : undefined}
                 onClick={(e) => {
-                  if (form && !confirm("프로젝트 정보를 편집 중입니다. 저장하지 않고 이동할까요?")) e.preventDefault();
+                  // 새 탭·새 창으로 여는 클릭은 링크 그대로 둔다. 그 밖에는 화면을 다시 불러오지 않고 프로젝트만 바꾼다.
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                  e.preventDefault();
+                  if (form && !confirm("프로젝트 정보를 편집 중입니다. 저장하지 않고 이동할까요?")) return;
+                  setForm(null); setError("");
+                  choose(p.id);
+                  closeOnMobile();
+                  requestAnimationFrame(() => documentTitle.current?.focus());
                 }}>
                 <span className="list-item-title">{p.title}</span>
                 <span className="list-item-preview">{p.purpose || "목표를 추가할 수 있습니다."}</span>
@@ -249,7 +258,6 @@ function Chat({ project, aiReady }: { project: Project; aiReady: boolean }) {
             <ChatWaiting />
           </article>
         )}
-        <div ref={end} />
       </div>
       {error && <p className="error" role="alert">{error}</p>}
       <form className="chat-composer" onSubmit={(e) => { e.preventDefault(); ask(); }}>
@@ -265,6 +273,8 @@ function Chat({ project, aiReady }: { project: Project; aiReady: boolean }) {
         </div>
       </form>
       <p className="muted chat-note">AI 답변은 틀릴 수 있습니다. 대화는 나에게만 보입니다.</p>
+      {/* 스크롤 기준점은 입력창 아래에 둔다. 입력창이 화면 아래에 붙어 있어서, 대화 끝에 두면 새 답변이 입력창 뒤에 가려진다. */}
+      <div ref={end} />
     </section>
   );
 }
