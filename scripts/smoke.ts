@@ -4,7 +4,7 @@
 //   npm run smoke -- --url=https://<프로젝트>.vercel.app
 //   npm run smoke -- --url=http://localhost:3000
 //
-// 시험용 계정 2~3개를 만든다(이메일 smoke+<시각>@example.invalid). 끝나면 회원 탈퇴로 계정과 자료를 모두 지운다
+// 이메일 없는 시험용 계정 2~3개를 만든다. 로그인 코드는 메모리에만 두며 출력하지 않는다. 끝나면 회원 탈퇴로 자료를 지운다
 // (--keep 을 붙이면 남긴다). 탈퇴 기능 자체도 여기서 점검한다.
 // 프록시 뒤(클라우드 세션)에서는 NODE_USE_ENV_PROXY=1 을 붙인다.
 
@@ -21,9 +21,17 @@ const TAG = Date.now().toString(36);
 
 class Client {
   readonly who: string;
+  loginCode = "";
   private cookies = new Map<string, string>();
   constructor(who: string) {
     this.who = who;
+  }
+  /** 먼저 받은 개인 코드를 보관한 뒤 가입한다. 응답이 유실돼도 코드가 남는다. */
+  async start(body: Json) {
+    const prepared = await this.call("POST", "/api/auth/prepare", {});
+    if (prepared.status !== 200) return prepared;
+    this.loginCode = prepared.data.loginCode;
+    return this.call("POST", "/api/auth/signup", { ...body, registrationTicket: prepared.data.registrationTicket });
   }
   /** 지금 쿠키를 복사한 새 클라이언트 (탈퇴 뒤 옛 쿠키가 거부되는지 보려고) */
   clone(who: string): Client {
@@ -84,7 +92,6 @@ const expect = (cond: unknown, msg: string) => { if (!cond) throw new Error(msg)
 async function main() {
   console.log(`배포 점검: ${BASE} (${new Date().toISOString()})`);
   const A = new Client("A"), B = new Client("B"), C = new Client("C");
-  const pw = `Smoke-${TAG}-pass-word`;
   let teamId = "", inviteCode = "", note1 = { id: "", versionId: "", hash: "" }, note2 = { id: "", versionId: "", hash: "" };
   let taskId = "", adviceId = "", firstItemId = "", chatId = "", sharedNoteId = "", meetingId = "";
   let ai = { provider: "none", available: false, model: null as string | null };
@@ -109,10 +116,11 @@ async function main() {
   });
 
   await step("가입 A", async () => {
-    const r = await A.call("POST", "/api/auth/signup", { email: `smoke+a${TAG}@example.invalid`, password: pw, displayName: "점검A" });
+    const r = await A.start({ displayName: "점검A", teamName: `점검팀 ${TAG}` });
     expect(r.status === 200, `HTTP ${r.status} ${r.data.message ?? ""}`);
+    teamId = r.data.team.id;
     const me = await A.call("GET", "/api/auth/me");
-    expect(me.status === 200 && me.data.displayName === "점검A", "로그인 세션이 유지되지 않음 (쿠키)");
+    expect(me.status === 200 && me.data.displayName === "점검A" && me.data.email === null && me.data.authMethod === "code", "이메일 없는 계정의 로그인 세션이 유지되지 않음");
   });
 
   await step("AI 설정 확인", async () => {
@@ -124,19 +132,18 @@ async function main() {
     return ai.available ? `AI 연결됨: ${ai.provider} ${ai.model ?? ""}` : "AI 미연결 (키워드 모드)";
   });
 
-  await step("팀 만들기", async () => {
-    const r = await A.call("POST", "/api/teams", { name: `점검팀 ${TAG}` });
-    expect(r.status === 200 && r.data.id, `HTTP ${r.status}`);
-    teamId = r.data.id; inviteCode = r.data.inviteCode;
+  await step("시작할 때 만든 팀·초대 코드 확인", async () => {
+    const r = await A.call("GET", `/api/teams/${teamId}`);
+    expect(r.status === 200 && r.data.myRole === "lead", `HTTP ${r.status}`);
     const inv = await A.call("GET", `/api/teams/${teamId}/invite`);
-    expect(inv.data.inviteCode === inviteCode, "초대 코드 조회 실패");
+    inviteCode = inv.data.inviteCode;
+    expect(inv.status === 200 && inviteCode, "초대 코드 조회 실패");
   });
 
   await step("가입 B → 초대 코드로 합류", async () => {
-    const r = await B.call("POST", "/api/auth/signup", { email: `smoke+b${TAG}@example.invalid`, password: pw, displayName: "점검B" });
+    const r = await B.start({ displayName: "점검B", inviteCode });
     expect(r.status === 200, `HTTP ${r.status}`);
-    const j = await B.call("POST", "/api/teams/join", { inviteCode });
-    expect(j.status === 200, `합류 실패 HTTP ${j.status}`);
+    expect(r.data.team.id === teamId, "초대한 팀과 다른 팀에 참여함");
     const t = await B.call("GET", `/api/teams/${teamId}`);
     expect(t.data.members?.length === 2, "팀원 수가 2가 아님");
   });
@@ -312,7 +319,7 @@ async function main() {
   });
 
   await step("타 팀 사용자 차단", async () => {
-    const r = await C.call("POST", "/api/auth/signup", { email: `smoke+c${TAG}@example.invalid`, password: pw, displayName: "점검C" });
+    const r = await C.start({ displayName: "점검C", teamName: `다른 점검팀 ${TAG}` });
     expect(r.status === 200, `HTTP ${r.status}`);
     const n = await C.call("GET", `/api/notes/${note2.id}`);
     expect(n.status === 404, `다른 팀 메모가 ${n.status} 로 응답 (404 여야 함)`);
@@ -334,15 +341,15 @@ async function main() {
   const deleted = new Set<Client>();
   if (!keep) {
     await step("회원 탈퇴 → 계정·메모 삭제", async () => {
-      const wrong = await A.call("DELETE", "/api/auth/me", { password: "wrong-password-0000" });
-      expect(wrong.status === 403, `틀린 비밀번호로 탈퇴가 ${wrong.status} 로 응답 (403 여야 함)`);
+      const wrong = await A.call("DELETE", "/api/auth/me", { loginCode: "wrong-code" });
+      expect(wrong.status === 403, `틀린 코드로 탈퇴가 ${wrong.status} 로 응답 (403 여야 함)`);
       const oldCookie = A.clone("A-old");
-      const r = await A.call("DELETE", "/api/auth/me", { password: pw });
+      const r = await A.call("DELETE", "/api/auth/me", { loginCode: A.loginCode });
       expect(r.status === 200 && r.data.deleted === true, `탈퇴 실패 HTTP ${r.status} ${r.data.message ?? ""}`);
       deleted.add(A);
       const me = await oldCookie.call("GET", "/api/auth/me");
       expect(me.status === 401, `탈퇴한 계정의 옛 쿠키가 ${me.status} 로 응답 (401 여야 함)`);
-      const login = await A.call("POST", "/api/auth/login", { email: `smoke+a${TAG}@example.invalid`, password: pw });
+      const login = await A.call("POST", "/api/auth/login", { loginCode: A.loginCode });
       expect(login.status === 401, `탈퇴한 계정으로 로그인이 ${login.status} 로 응답`);
       const n = await B.call("GET", `/api/notes/${note2.id}`);
       expect(n.status === 404, `탈퇴자의 공유 메모가 ${n.status} 로 응답 (지워져야 함)`);
@@ -369,7 +376,7 @@ async function main() {
       if (deleted.has(c)) continue;
       const me = await c.call("GET", "/api/auth/me").catch(() => null);
       if (me?.status !== 200) continue; // 가입 전에 멈췄거나 이미 지워짐
-      const r = await c.call("DELETE", "/api/auth/me", { password: pw }).catch(() => null);
+      const r = await c.call("DELETE", "/api/auth/me", { loginCode: c.loginCode }).catch(() => null);
       if (r?.status !== 200) left.push(c.who);
     }
     results.push({
