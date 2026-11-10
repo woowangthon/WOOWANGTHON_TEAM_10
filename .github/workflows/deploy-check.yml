@@ -1,0 +1,30 @@
+# main 에 병합되면, 운영 배포본이 그 커밋으로 바뀌고 들어갈 수 있는 상태인지 확인한다.
+# 보는 것: 배포 커밋, DB 연결과 마이그레이션 적용, 로그인 경로가 서버 오류 없이 응답하는지.
+# 계정을 만들지 않고 모델도 부르지 않는다 (scripts/deploy-check.ts). 전체 흐름은 사람이 `npm run smoke` 로 본다.
+# 주소가 바뀌면 저장소 Settings → Secrets and variables → Actions → Variables 에 PRODUCTION_URL 을 넣는다.
+name: 배포 확인
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-check
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://mijuk00.vercel.app' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --experimental-strip-types scripts/deploy-check.ts --url="$PRODUCTION_URL" --commit="$GITHUB_SHA" --wait=900
