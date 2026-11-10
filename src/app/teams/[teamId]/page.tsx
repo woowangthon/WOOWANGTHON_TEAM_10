@@ -3,7 +3,8 @@
 import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../../api-client.ts";
-import { AiBanner, TeamHeader, useAiConfig, type TeamInfo } from "../team-header.tsx";
+import { usePanePicker } from "../../pane-picker.ts";
+import { AiBanner, TeamHeader, useAiConfig, type AiConfig, type TeamInfo } from "../team-header.tsx";
 
 type Project = { id: string; title: string; purpose: string; audience: string; constraints: string; version: number };
 type Source = { kind: "memo"; noteId: string; text: string } | { kind: "meeting"; noteId: string; title: string; date: string; text: string };
@@ -41,6 +42,7 @@ export default function TeamChatPage({ params }: { params: Promise<{ teamId: str
   const [filter, setFilter] = useState("");
   const [saving, setSaving] = useState(false);
   const documentTitle = useRef<HTMLHeadingElement>(null);
+  const { picker, closeOnMobile } = usePanePicker();
 
   const loadProjects = async (select?: string) => {
     try {
@@ -88,14 +90,14 @@ export default function TeamChatPage({ params }: { params: Promise<{ teamId: str
     <main className="workspace">
       <TeamHeader teamId={teamId} active="chat" onLoaded={setTeam} />
       <section className="workspace-list" aria-label="프로젝트 목록">
-        <details className="pane-picker">
+        <details ref={picker} className="pane-picker">
           <summary>프로젝트 목록{project ? ` · ${project.title}` : ""}</summary>
           <div className="pane-items">
             <header className="pane-header">
               <h2 className="pane-title">프로젝트</h2>
               <p className="pane-subtitle">프로젝트마다 나만 보는 대화를 이어갑니다.</p>
               <div className="pane-toolbar">
-                <button type="button" onClick={() => { setForm({ mode: "new", value: EMPTY_FORM }); setError(""); }}>새 프로젝트</button>
+                <button type="button" onClick={() => { setForm({ mode: "new", value: EMPTY_FORM }); setError(""); closeOnMobile(); }}>새 프로젝트</button>
               </div>
               <label className="project-list-search">
                 <span className="field-label">프로젝트 찾기</span>
@@ -109,7 +111,14 @@ export default function TeamChatPage({ params }: { params: Promise<{ teamId: str
               <a key={p.id} href={`/teams/${teamId}?p=${encodeURIComponent(p.id)}#project-title`} className={`list-item${p.id === projectId && !form ? " selected" : ""}`}
                 aria-current={p.id === projectId && !form ? "true" : undefined}
                 onClick={(e) => {
-                  if (form && !confirm("프로젝트 정보를 편집 중입니다. 저장하지 않고 이동할까요?")) e.preventDefault();
+                  // 새 탭·새 창으로 여는 클릭은 링크 그대로 둔다. 그 밖에는 화면을 다시 불러오지 않고 프로젝트만 바꾼다.
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                  e.preventDefault();
+                  if (form && !confirm("프로젝트 정보를 편집 중입니다. 저장하지 않고 이동할까요?")) return;
+                  setForm(null); setError("");
+                  choose(p.id);
+                  closeOnMobile();
+                  requestAnimationFrame(() => documentTitle.current?.focus());
                 }}>
                 <span className="list-item-title">{p.title}</span>
                 <span className="list-item-preview">{p.purpose || "목표를 추가할 수 있습니다."}</span>
@@ -150,7 +159,7 @@ export default function TeamChatPage({ params }: { params: Promise<{ teamId: str
         )}
         {error && <p className="error document-body" role="alert">{error}</p>}
         {projects === null && !error && <p className="document-body muted" role="status">대화를 불러오는 중…</p>}
-        {project && !form && <Chat key={project.id} project={project} aiReady={ai.available} />}
+        {project && !form && <Chat key={project.id} project={project} aiReady={ai.available} aiStatus={ai.status} />}
       </section>
     </main>
   );
@@ -178,11 +187,15 @@ function ProjectEditor({ mode, value, onChange, onSave, onCancel, first, saving 
   );
 }
 
-function Chat({ project, aiReady }: { project: Project; aiReady: boolean }) {
+function Chat({ project, aiReady, aiStatus }: { project: Project; aiReady: boolean; aiStatus: AiConfig["status"] }) {
+  type QuestionRequest = { question: string; clientRequestId: string };
+  type FailedQuestion = QuestionRequest & { error: string };
   const [turns, setTurns] = useState<Turn[] | null>(null);
-  const [pending, setPending] = useState<string | null>(null);
+  const [pending, setPending] = useState<QuestionRequest | null>(null);
   const [question, setQuestion] = useState("");
   const [error, setError] = useState("");
+  const [failedQuestions, setFailedQuestions] = useState<FailedQuestion[]>([]);
+  const sending = useRef(false);
   const end = useRef<HTMLDivElement>(null);
   const questionBox = useRef<HTMLTextAreaElement>(null);
 
@@ -206,24 +219,32 @@ function Chat({ project, aiReady }: { project: Project; aiReady: boolean }) {
     return () => clearInterval(timer);
   }, [turns, pending]);
 
-  const ask = async () => {
-    const q = question.trim();
-    if (!q || pending || !aiReady) return;
-    setPending(q); setQuestion(""); setError("");
+  const ask = async (retry?: FailedQuestion) => {
+    const q = retry?.question ?? question.trim();
+    if (!q || sending.current || !aiReady) return;
+    const clientRequestId = retry?.clientRequestId ?? crypto.randomUUID();
+    sending.current = true;
+    setPending({ question: q, clientRequestId }); setError("");
+    if (!retry) setQuestion("");
     try {
-      const t = await api<Turn>(`/api/tasks/${project.id}/chat`, { body: { question: q, clientRequestId: crypto.randomUUID() } });
-      setTurns((prev) => [...(prev ?? []).filter((x) => x.id !== t.id), t]);
+      // 응답만 도착하지 않았더라도 같은 식별자로 재시도해 질문을 중복 저장하지 않는다.
+      const t = await api<Turn>(`/api/tasks/${project.id}/chat`, { body: { question: q, clientRequestId } });
+      setTurns((prev) => [...(prev ?? []).filter((x) => x.id !== t.id), t].sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+      setFailedQuestions((prev) => prev.filter((x) => x.clientRequestId !== clientRequestId));
     } catch (e) {
-      setError((e as Error).message);
-      setQuestion(q);
-    } finally { setPending(null); }
+      const message = e instanceof TypeError
+        ? "질문 전송 결과를 확인하지 못했습니다. 연결을 확인한 뒤 다시 보내 주세요."
+        : e instanceof Error ? e.message : "질문 전송 결과를 확인하지 못했습니다. 다시 보내 주세요.";
+      // 전송을 기다리며 쓴 다음 질문은 입력란에 남기고, 실패한 질문은 별도로 보관한다.
+      setFailedQuestions((prev) => [...prev.filter((x) => x.clientRequestId !== clientRequestId), { question: q, clientRequestId, error: message }]);
+    } finally { sending.current = false; setPending(null); }
   };
 
   return (
     <section className="chat document-body" aria-label="AI 대화">
       <div className="chat-log" aria-live="polite">
         {turns === null && !error && <p className="muted" role="status">대화를 불러오는 중…</p>}
-        {turns?.length === 0 && !pending && (
+        {turns?.length === 0 && !pending && failedQuestions.length === 0 && (
           <div className="chat-empty">
             <h2>첫 질문</h2>
             <p className="muted">프로젝트에 대해 물어보세요. 질문과 답변은 나에게만 보입니다.</p>
@@ -242,21 +263,30 @@ function Chat({ project, aiReady }: { project: Project; aiReady: boolean }) {
             <Answer t={t} />
           </article>
         ))}
+        {failedQuestions.filter((failed) => failed.clientRequestId !== pending?.clientRequestId).map((failed) => (
+          <article key={failed.clientRequestId} className="chat-turn">
+            <div className="chat-speaker">전송을 확인하지 못한 질문</div>
+            <p className="chat-question">{failed.question}</p>
+            <div role="alert">
+              <p className="error">{failed.error}</p>
+              <button type="button" className="small" disabled={!aiReady || !!pending} onClick={() => ask(failed)}>다시 보내기</button>
+            </div>
+          </article>
+        ))}
         {pending && (
           <article className="chat-turn">
             <div className="chat-speaker">나</div>
-            <p className="chat-question">{pending}</p>
+            <p className="chat-question">{pending.question}</p>
             <ChatWaiting />
           </article>
         )}
-        <div ref={end} />
       </div>
       {error && <p className="error" role="alert">{error}</p>}
       <form className="chat-composer" onSubmit={(e) => { e.preventDefault(); ask(); }}>
         <label className="field-label" htmlFor="chat-question">프로젝트에 질문하기</label>
         <textarea ref={questionBox} id="chat-question" rows={3} maxLength={2000} value={question} disabled={!aiReady}
           aria-describedby="chat-composer-help"
-          placeholder={aiReady ? "궁금한 내용을 적어 주세요." : "AI가 연결되지 않았습니다"}
+          placeholder={aiStatus === "loading" ? "AI 설정을 확인하는 중…" : aiStatus === "error" ? "AI 설정을 불러오지 못했습니다" : aiReady ? "궁금한 내용을 적어 주세요." : "AI가 연결되지 않았습니다"}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); ask(); } }} />
         <div className="composer-footer">
@@ -265,6 +295,8 @@ function Chat({ project, aiReady }: { project: Project; aiReady: boolean }) {
         </div>
       </form>
       <p className="muted chat-note">AI 답변은 틀릴 수 있습니다. 대화는 나에게만 보입니다.</p>
+      {/* 스크롤 기준점은 입력창 아래에 둔다. 입력창이 화면 아래에 붙어 있어서, 대화 끝에 두면 새 답변이 입력창 뒤에 가려진다. */}
+      <div ref={end} />
     </section>
   );
 }

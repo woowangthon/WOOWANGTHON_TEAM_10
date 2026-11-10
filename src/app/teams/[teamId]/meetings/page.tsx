@@ -1,9 +1,10 @@
 "use client";
 // 회의록: 팀원끼리 회의한 내용을 적어 두면 AI 가 대화할 때 참고한다. 쓰는 즉시 팀에 공유되고, 팀원 누구나 고칠 수 있다.
 // 누가 어떤 부분을 고쳤는지는 '수정 기록'에서 버전별로 비교해 본다.
-import { use, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { compactDiff, diffLines } from "../../../../lib/diff.ts";
 import { api } from "../../../api-client.ts";
+import { usePanePicker } from "../../../pane-picker.ts";
 import { TeamHeader } from "../../team-header.tsx";
 
 type Meeting = {
@@ -36,6 +37,21 @@ export default function MeetingsPage({ params }: { params: Promise<{ teamId: str
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const documentPane = useRef<HTMLElement>(null);
+  const { picker, closeOnMobile } = usePanePicker();
+  // 쓰던 회의록(새로 쓰기·수정)이 있으면 화면을 떠나기 전에 확인한다. 옆 메뉴는 화면을 새로 불러오므로 그대로 두면 쓴 내용이 사라진다.
+  const editDirty = useRef(false);
+  const reportDirty = useCallback((dirty: boolean) => { editDirty.current = dirty; }, []);
+  const formDirty = !!form && (form.title.trim() !== "" || form.text !== TEMPLATE);
+  const unsaved = useRef(false);
+  unsaved.current = formDirty;
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!unsaved.current && !editDirty.current) return;
+      event.preventDefault(); event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
   const focusDocument = () => requestAnimationFrame(() => documentPane.current?.querySelector<HTMLElement>(".document-title")?.focus());
 
   const load = () => api<Meeting[]>(`/api/teams/${teamId}/meetings`).then((rows) => {
@@ -75,7 +91,7 @@ export default function MeetingsPage({ params }: { params: Promise<{ teamId: str
           </div>
           {(editingMeeting || form) && <p className="pane-subtitle">저장하거나 취소한 뒤 다른 회의록을 고를 수 있습니다.</p>}
         </header>
-        <details className="pane-picker">
+        <details ref={picker} className="pane-picker">
           <summary>회의록 목록{items ? ` · ${items.length}개` : ""}</summary>
           <div className="pane-items">
             {items === null && <p className="pane-subtitle" role="status">회의록을 불러오는 중…</p>}
@@ -83,10 +99,9 @@ export default function MeetingsPage({ params }: { params: Promise<{ teamId: str
             {items?.map((m) => (
               <button key={m.id} className={`list-item${!form && selectedId === m.id ? " selected" : ""}`}
                 aria-current={!form && selectedId === m.id ? "true" : undefined} disabled={busy || editingMeeting || !!form}
-                onClick={(event) => {
+                onClick={() => {
                   setSelectedId(m.id); setForm(null); setError(""); setNotice("");
-                  const picker = event.currentTarget.closest("details");
-                  if (picker) picker.open = false;
+                  closeOnMobile();
                   focusDocument();
                 }}>
                 <span className="list-item-meta">{fmtDate(m.date)}{m.state === "withdrawn" ? " · 공유 철회됨" : ""}</span>
@@ -113,7 +128,7 @@ export default function MeetingsPage({ params }: { params: Promise<{ teamId: str
             </div>
           </>
         ) : selected ? (
-          <MeetingDocument key={selected.id} m={selected} run={run} busy={busy} onEditingChange={setEditingMeeting} onRead={focusDocument} />
+          <MeetingDocument key={selected.id} m={selected} run={run} busy={busy} onEditingChange={setEditingMeeting} onDirtyChange={reportDirty} onRead={focusDocument} />
         ) : (
           <div className="document-body">
             <h1 className="document-title" tabIndex={-1}>회의록</h1>
@@ -134,19 +149,19 @@ function MeetingEditor({ value, onChange, onSave, onCancel, busy, saveLabel, sho
       <div className="row" style={{ flexWrap: "wrap" }}>
         <p style={{ flex: "1 1 200px", margin: "0 0 8px" }}>
           <label className="field-label" htmlFor="mt-title">회의 제목</label>
-          <input id="mt-title" placeholder="예: 발표 구성 회의" value={value.title} maxLength={200} onChange={(e) => onChange({ ...value, title: e.target.value })} />
+          <input id="mt-title" placeholder="예: 발표 구성 회의" value={value.title} maxLength={200} disabled={busy} onChange={(e) => onChange({ ...value, title: e.target.value })} />
         </p>
         <p style={{ flex: "0 0 170px", margin: "0 0 8px" }}>
           <label className="field-label" htmlFor="mt-date">날짜</label>
-          <input id="mt-date" type="date" value={value.date} onChange={(e) => onChange({ ...value, date: e.target.value })} />
+          <input id="mt-date" type="date" value={value.date} disabled={busy} onChange={(e) => onChange({ ...value, date: e.target.value })} />
         </p>
       </div>
       <label className="field-label" htmlFor="mt-text">회의 내용</label>
-      <textarea id="mt-text" rows={12} maxLength={10000} value={value.text} onChange={(e) => onChange({ ...value, text: e.target.value })} />
+      <textarea id="mt-text" rows={12} maxLength={10000} value={value.text} disabled={busy} onChange={(e) => onChange({ ...value, text: e.target.value })} />
       <p className="muted" style={{ margin: "4px 0" }}>{value.text.length.toLocaleString()} / 10,000자 · 회의 녹음 요약이나 메신저 대화를 붙여 넣어도 됩니다.</p>
       {showAiToggle && (
         <label className="check" style={{ margin: "8px 0" }}>
-          <input type="checkbox" checked={value.allowExternalAi} onChange={(e) => onChange({ ...value, allowExternalAi: e.target.checked })} />
+          <input type="checkbox" checked={value.allowExternalAi} disabled={busy} onChange={(e) => onChange({ ...value, allowExternalAi: e.target.checked })} />
           AI가 대화할 때 이 회의록을 참고해도 됨</label>
       )}
       <div className="row">
@@ -157,13 +172,18 @@ function MeetingEditor({ value, onChange, onSave, onCancel, busy, saveLabel, sho
   );
 }
 
-function MeetingDocument({ m, run, busy, onEditingChange, onRead }: {
-  m: Meeting; run: Run; busy: boolean; onEditingChange: (editing: boolean) => void; onRead: () => void;
+function MeetingDocument({ m, run, busy, onEditingChange, onDirtyChange, onRead }: {
+  m: Meeting; run: Run; busy: boolean; onEditingChange: (editing: boolean) => void; onDirtyChange: (dirty: boolean) => void; onRead: () => void;
 }) {
   const [editing, setEditing] = useState<(Form & { base: string }) | null>(null);
   const [history, setHistory] = useState<Version[] | null>(null);
   const manage = (action: string, extra: object = {}) => run(() => api(`/api/meetings/${m.id}/manage`, { body: { action, ...extra } }));
   useEffect(() => () => onEditingChange(false), [onEditingChange]);
+  const dirty = !!editing && (editing.title !== m.title || editing.date !== m.date || editing.text !== m.text);
+  useEffect(() => {
+    onDirtyChange(dirty);
+    return () => onDirtyChange(false);
+  }, [dirty, onDirtyChange]);
 
   if (editing) {
     return (
