@@ -2,7 +2,7 @@
 //
 // 왜 폴더를 직접 읽지 않나: 운영(Vercel) 서버 함수에는 db/migrations 폴더가 함께 올라가지 않는다.
 // 그래서 실행 중에는 이 목록과 DB 의 적용 기록(schema_migrations)을 비교한다.
-// 마이그레이션 파일을 추가하면 여기에도 추가한다. 빠뜨리면 tests/schema-version.test.ts 가 실패한다.
+// 마이그레이션 파일을 추가하면 여기에도 추가한다. 빠뜨리면 tests/deploy-safety.test.ts 가 실패한다.
 export const REQUIRED_MIGRATIONS: readonly string[] = [
   "001_init.sql",
   "002_advice_pipeline.sql",
