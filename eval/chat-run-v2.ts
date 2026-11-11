@@ -336,7 +336,7 @@ async function main() {
   await writeFile(path.join(outDir, "raw.json"), JSON.stringify(raw, null, 2));
   await writeFile(path.join(outDir, "report.md"), render(raw, cases));
   await writeFile(path.join(outDir, "human-review.md"), humanSheet(raw, cases));
-  console.log(`\n결과: ${outDir}/report.md · 사람 판정표: ${outDir}/human-review.md`);
+  console.log(`\n결과: ${outDir}/report.md · AI 채점 검증표(사람이 채움): ${outDir}/human-review.md`);
   for (const r of runs) console.log(JSON.stringify(r.summary));
 }
 
@@ -387,7 +387,7 @@ function render(raw: Record<string, any>, cases: Cases): string {
 }
 
 function humanSheet(raw: Record<string, any>, cases: Cases): string {
-  const L: string[] = [`# 사람 판정표 — 검증 평가 v2 ${raw.runId} (1회차)`, "", "각 답을 정답 기준과 비교해 `판정`(정답/부분/오답)과 `이유`를 채운다. AI 채점과 다르면 사람 판정을 따른다.", "",
+  const L: string[] = [`# AI 채점 검증표 — 사람이 직접 다시 채점 (검증 평가 v2 ${raw.runId}, 1회차)`, "", "**이 표로 알고자 하는 것**: ① AI 채점자의 판정을 믿어도 되는가(사람 판정과 얼마나 같은가), ② 낱말 검사와 AI 채점이 놓친 문제가 있는가, ③ 정답 기준과 「AI만 참고」 정책이 사람이 보기에도 자연스러운가.", "", "각 답을 정답 기준과 비교해 `판정`(정답/부분/오답)과 `이유`를 채운다. AI 채점과 다르면 사람 판정을 따른다.", "",
     "| 문항 | 질문 | 정답 기준 | 답변 | AI 채점 | 판정 | 이유 |", "| --- | --- | --- | --- | --- | --- | --- |"];
   const esc = (s: string) => String(s).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
   for (const q of raw.runs[0].questions) {
