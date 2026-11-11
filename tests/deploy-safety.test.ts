@@ -1,9 +1,11 @@
 // 2026-11-10 운영 장애(새 마이그레이션이 운영 DB 에 없는 채로 배포됨)의 재발을 막는 장치들.
 import { readdirSync } from "node:fs";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { judgeHealth } from "../scripts/deploy-check.ts";
+import { deployCheck, judgeHealth, request } from "../scripts/deploy-check.ts";
 import { migrate } from "../scripts/migrate.ts";
 import { deployMigrationPlan } from "../scripts/predeploy.ts";
 import { closePool } from "../src/lib/db.ts";
@@ -101,28 +103,101 @@ describe("배포 확인의 상태 판정", () => {
   const sha = "9caa8ae770ac4ec7bc74638f6ba48f3a1fe6bc57";
 
   it("기대한 커밋이 배포됐고 DB 가 정상이면 통과", () => {
-    expect(judgeHealth(200, { ok: true, db: "ok", pendingMigrations: 0, commit: "9caa8ae" }, sha, false).state).toBe("ready");
-    expect(judgeHealth(200, { ok: true, db: "ok" }, null, false).state).toBe("ready");
+    expect(judgeHealth(200, { ok: true, db: "ok", pendingMigrations: 0, commit: "9caa8ae" }, sha).state).toBe("ready");
+    expect(judgeHealth(200, { ok: true, db: "ok" }, null).state).toBe("ready");
   });
 
   it("아직 이전 커밋이면 기다린다", () => {
-    const v = judgeHealth(200, { ok: true, db: "ok", commit: "ee9ecf9" }, sha, false);
+    const v = judgeHealth(200, { ok: true, db: "ok", commit: "ee9ecf9" }, sha);
     expect(v.state).toBe("waiting");
     expect(v.message).toContain("ee9ecf9");
   });
 
   it("마이그레이션이 빠져 있으면 기다리지 않고 실패한다", () => {
-    const v = judgeHealth(503, { ok: false, db: "migrations_pending", pendingMigrations: 2, commit: "9caa8ae" }, sha, false);
+    const v = judgeHealth(503, { ok: false, db: "migrations_pending", pendingMigrations: 2, commit: "9caa8ae" }, sha);
     expect(v.state).toBe("failed");
     expect(v.message).toContain("2개");
   });
 
-  it("커밋을 알려주지 않는 배포본은 잠시 기다린 뒤 DB 상태만으로 판정한다", () => {
-    expect(judgeHealth(200, { ok: true, db: "ok" }, sha, false).state).toBe("waiting");
-    expect(judgeHealth(200, { ok: true, db: "ok" }, sha, true).state).toBe("ready");
+  it("기대한 커밋이 있는데 배포본이 커밋을 알려 주지 않으면 통과시키지 않는다", () => {
+    // 확인하지 못한 것은 같은 것이 아니다. 얼마를 기다려도 ready 가 되지 않는다
+    expect(judgeHealth(200, { ok: true, db: "ok" }, sha).state).toBe("waiting");
+    expect(judgeHealth(200, { ok: true, db: "ok", commit: null }, sha).state).toBe("waiting");
+    expect(judgeHealth(200, { ok: true, db: "ok", commit: null }, sha).message).toContain("확인할 수 없습니다");
   });
 
   it("DB 연결 실패는 깨어나는 중일 수 있으므로 다시 확인한다", () => {
-    expect(judgeHealth(503, { ok: false, db: "error", commit: "9caa8ae" }, sha, false).state).toBe("waiting");
+    expect(judgeHealth(503, { ok: false, db: "error", commit: "9caa8ae" }, sha).state).toBe("waiting");
+  });
+});
+
+describe("배포 확인 실행", () => {
+  const sha = "ed2bfe02052a87d19b9bd773e0fbc13e6749dd72";
+  type Handler = (req: IncomingMessage, res: ServerResponse) => void;
+  const servers: Server[] = [];
+  /** 요청을 handler 로 처리하는 임시 서버의 주소 */
+  const serve = async (handler: Handler) => {
+    const server = createServer(handler);
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  };
+  afterAll(() => { for (const server of servers) { server.closeAllConnections(); server.close(); } });
+
+  const json = (res: ServerResponse, status: number, body: unknown) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(body)); };
+  /** 정상 배포본. health 와 codeLoginStatus 만 바꿔 여러 상태를 흉내 낸다 */
+  const app = (health: Record<string, unknown>, codeLoginStatus = 401): Handler => (req, res) => {
+    if (req.url === "/api/health") return json(res, health.ok ? 200 : 503, health);
+    if (req.url === "/api/auth/prepare") return json(res, 200, { loginCode: "x", registrationTicket: "y" });
+    if (req.url === "/api/auth/login") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => json(res, body.includes("loginCode") ? codeLoginStatus : 401, { error: "x" }));
+      return;
+    }
+    return json(res, 401, { error: "unauthorized" });
+  };
+  const quick = { waitSec: 1, requestTimeoutMs: 300, pollMs: 100 };
+
+  it("기대한 커밋이 배포됐고 로그인 경로가 정상이면 통과한다", async () => {
+    const url = await serve(app({ ok: true, db: "ok", pendingMigrations: 0, commit: "ed2bfe0" }));
+    expect(await deployCheck({ url, commit: sha, ...quick })).toEqual({ ok: true, reason: "" });
+  });
+
+  it("기대한 커밋을 지정했는데 배포본이 커밋을 알려 주지 않으면 실패한다", async () => {
+    const url = await serve(app({ ok: true, db: "ok", pendingMigrations: 0, commit: null }));
+    const result = await deployCheck({ url, commit: sha, ...quick });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain("확인할 수 없습니다");
+    // 커밋을 지정하지 않으면 같은 배포본을 DB 상태와 로그인 경로만으로 확인한다
+    expect((await deployCheck({ url, ...quick })).ok).toBe(true);
+  });
+
+  it("다른 커밋이 배포돼 있으면 제한 시간 뒤 실패한다", async () => {
+    const url = await serve(app({ ok: true, db: "ok", pendingMigrations: 0, commit: "9caa8ae" }));
+    const result = await deployCheck({ url, commit: sha, ...quick });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain("9caa8ae");
+  });
+
+  it("상태 점검은 정상인데 코드 로그인이 서버 오류면 실패한다 (2026-11-10 장애의 모습)", async () => {
+    const url = await serve(app({ ok: true, db: "ok", pendingMigrations: 0, commit: "ed2bfe0" }, 500));
+    const result = await deployCheck({ url, commit: sha, ...quick });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain("없는 코드로 로그인");
+  });
+
+  it("응답 본문이 멈춰도 요청 제한 시간에 끊고, 기다리는 전체 시간을 넘기지 않는다", async () => {
+    // 머리말과 본문 앞부분만 보내고 끝내지 않는 서버
+    const url = await serve((_req, res) => { res.writeHead(200, { "Content-Type": "application/json" }); res.write('{"ok":'); });
+    const started = Date.now();
+    await expect(request(url, "GET", "/api/health", undefined, 200)).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(1500);
+
+    const again = Date.now();
+    const result = await deployCheck({ url, commit: sha, ...quick });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain("응답 없음");
+    expect(Date.now() - again).toBeLessThan(3000); // 제한 1초 + 여유. 예전에는 끝나지 않았다
   });
 });
