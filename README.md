@@ -82,7 +82,7 @@
 | 구분 | 내용 |
 | --- | --- |
 | **팀이 한 일** | 문제 정의와 원안(「팀 기억 기반 공동 AI 조언자 — 통합 구현 계획」) 작성, 설계 결정(실명 표시, AI 정리 허용 기본값, 조언 구획 등), 구현 결과 검토, 배포(Vercel·Neon)와 키·예산 관리, 실사용 시험 |
-| **AI 코딩 도구** | 코드·테스트·문서 작성에 **Claude Code**(Anthropic의 AI 코딩 에이전트)를 사용했다. 해당 커밋에는 `Co-Authored-By: Claude` 가 표시되어 있다 |
+| **AI 코딩 도구** | 코드·테스트·문서 작성에 **Claude Code**(Anthropic의 AI 코딩 에이전트)를 사용했다. 해당 커밋에는 `Co-Authored-By: Claude` 가 표시되어 있다. 11월 10일의 화면 개선과 이메일 없는 시작 흐름(PR #9·#10·#11)에는 **Codex**(OpenAI의 AI 코딩 에이전트)를 사용했다 |
 | **서비스 안에서 쓰는 AI** | OpenAI `gpt-6.1-terra` — 메모 정리, 프로젝트 대화. 프롬프트는 `src/lib/ai/prompts.ts`, 출력 검증은 `src/lib/ai/validate-output.ts` |
 | **오픈소스** | Next.js, React, node-postgres(`pg`), TypeScript, Vitest (모두 MIT 또는 Apache-2.0). 버전·라이선스 목록은 [`docs/출처.md`](docs/출처.md) |
 | **데이터** | 평가용 메모·질문·기대표(`eval/cases.json`)는 개발 팀이 만든 가상 자료. 외부 데이터셋은 쓰지 않았다 |
