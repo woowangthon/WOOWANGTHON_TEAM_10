@@ -19,7 +19,12 @@ export function MemoFab({ teamId, teams }: { teamId?: string; teams?: TeamOption
   const dialog = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => { if (teamId) setTarget(teamId); else if (!target && teams?.[0]) setTarget(teams[0].id); }, [teamId, teams]);
+  useEffect(() => {
+    if (teamId) { setTarget(teamId); return; }
+    // 팀 목록이 바뀌면(팀을 나갔거나 새로 생겼을 때) 저장할 팀을 다시 확인한다.
+    // 목록에 없는 팀이 대상으로 남아 있으면 저장이 404 로 실패하고, 팀이 하나뿐이면 고를 방법도 없다.
+    setTarget((current) => (teams?.some((t) => t.id === current) ? current : teams?.[0]?.id ?? ""));
+  }, [teamId, teams]);
   useEffect(() => {
     if (!open) return;
     // 클릭해도 버튼에 포커스가 가지 않는 브라우저(Safari)에서는 body 가 잡히므로, 그때는 '메모하기' 버튼으로 돌아간다
@@ -76,11 +81,12 @@ export function MemoFab({ teamId, teams }: { teamId?: string; teams?: TeamOption
           <div ref={dialog} className="modal" role="dialog" aria-modal="true" aria-labelledby={`${memoId}-heading`}>
             <div className="modal-heading"><h2 id={`${memoId}-heading`} style={{ marginTop: 0 }}>메모하기</h2><button type="button" className="small" onClick={() => setOpen(false)} aria-label="메모 창 닫기">닫기</button></div>
             {!teamId && teams && teams.length > 1 && (
-              <p><label className="field-label" htmlFor={`${memoId}-team`}>팀 선택</label><select id={`${memoId}-team`} aria-label="팀 선택" value={target} onChange={(e) => setTarget(e.target.value)}>
+              <p><label className="field-label" htmlFor={`${memoId}-team`}>팀 선택</label><select id={`${memoId}-team`} aria-label="팀 선택" value={target} disabled={busy} onChange={(e) => setTarget(e.target.value)}>
                 {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select></p>
             )}
-            <label className="field-label" htmlFor={memoId}>메모</label><textarea id={memoId} ref={box} aria-label="메모" rows={5} maxLength={2000} value={text}
+            {/* 저장하는 동안에는 입력을 잠근다: 저장이 끝나면 입력란을 비우므로, 기다리는 동안 더 쓴 내용이 저장도 되지 않고 사라진다 */}
+            <label className="field-label" htmlFor={memoId}>메모</label><textarea id={memoId} ref={box} aria-label="메모" rows={5} maxLength={2000} value={text} readOnly={busy} aria-busy={busy}
               placeholder="떠오른 생각을 짧게 적어 두세요. 미완성이어도 괜찮아요."
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing && text.trim() && !busy) { e.preventDefault(); save(); } }} />
