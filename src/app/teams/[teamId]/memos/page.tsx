@@ -136,6 +136,8 @@ export default function MemosPage({ params }: { params: Promise<{ teamId: string
     setError(""); setNotice("");
     openDraft({ text: pickedMemos.map((m) => m.text).join("\n"), sources: pickedMemos.map((m) => m.id), warnings: [], viaAi: false, allowAi: true });
   };
+  // 공유·다시 정리가 진행되는 동안에는 정리문과 'AI도 참고' 선택을 잠근다(아래 입력란의 readOnly·disabled).
+  // 요청은 누른 순간의 내용으로 나가고 끝나면 편집 화면을 닫으므로, 기다리는 동안 고친 것은 반영되지 않고 사라진다.
   const share = (visibility: "team" | "ai_only") => draft && run(`share-${visibility}`, async () => {
     await api(`/api/teams/${teamId}/shared`, { body: { text: draft.text, sourceNoteIds: draft.sources, allowExternalAi: visibility === "ai_only" || draft.allowAi, visibility } });
     setDraft(null); setPicked(new Set()); setFocusId(null); setFilter(visibility === "team" ? "team" : "authored");
@@ -190,11 +192,11 @@ export default function MemosPage({ params }: { params: Promise<{ teamId: string
         {notice && <p className="okc" role="status">{notice}</p>}
         {draft ? <article className="memo-composer">
           <header className="document-header"><p className="document-meta">내 메모 {draft.sources.length}개 바탕 · 아직 공유되지 않음</p><h1 className="document-title" tabIndex={-1}>{draft.viaAi ? "정리한 내용 확인" : "직접 정리"}</h1><p className="document-meta">불필요한 부분은 지우고 고친 뒤 공개 범위를 고르세요.</p></header>
-          <div className="document-body"><label className="field-label" htmlFor="memo-share-text">확인할 내용</label><textarea ref={draftInput} id="memo-share-text" aria-label="공유할 내용" className="document-editor" rows={10} maxLength={2000} value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} />
+          <div className="document-body"><label className="field-label" htmlFor="memo-share-text">확인할 내용</label><textarea ref={draftInput} id="memo-share-text" aria-label="공유할 내용" className="document-editor" rows={10} maxLength={2000} value={draft.text} readOnly={!!busy} aria-busy={!!busy} onChange={(e) => setDraft({ ...draft, text: e.target.value })} />
             {draft.warnings.map((w, i) => <p key={i} className="warn">{w}</p>)}
             <details className="ev"><summary>바탕이 된 내 메모</summary>{rawMemos.filter((m) => draft.sources.includes(m.id)).map((m) => <blockquote key={m.id}>{m.text}</blockquote>)}</details>
             <h2>공개 범위</h2><div className="share-choice">
-              <div><h3>팀에 공유</h3><p className="muted">팀원이 내용을 볼 수 있습니다.{draft.allowAi ? " AI도 대화할 때 참고할 수 있습니다." : " AI는 참고하지 않습니다."}</p><label className="check memo-ai"><input type="checkbox" checked={draft.allowAi} onChange={(e) => setDraft({ ...draft, allowAi: e.target.checked })} />AI도 참고하도록 허용</label><button className="primary" disabled={!draft.text.trim() || !!busy} onClick={() => share("team")}>{busy === "share-team" ? "공유 중…" : "팀에 공유"}</button></div>
+              <div><h3>팀에 공유</h3><p className="muted">팀원이 내용을 볼 수 있습니다.{draft.allowAi ? " AI도 대화할 때 참고할 수 있습니다." : " AI는 참고하지 않습니다."}</p><label className="check memo-ai"><input type="checkbox" checked={draft.allowAi} disabled={!!busy} onChange={(e) => setDraft({ ...draft, allowAi: e.target.checked })} />AI도 참고하도록 허용</label><button className="primary" disabled={!draft.text.trim() || !!busy} onClick={() => share("team")}>{busy === "share-team" ? "공유 중…" : "팀에 공유"}</button></div>
               <div><h3>AI만 참고</h3><p className="muted">원문·출처는 팀원에게 표시되지 않지만, 일정·장소 등 필요한 내용은 답변에 반영될 수 있습니다. 팀원이 알면 안 되는 비밀은 적지 마세요.</p><button disabled={!draft.text.trim() || !!busy} onClick={() => share("ai_only")}>{busy === "share-ai_only" ? "저장 중…" : "AI만 참고로 저장"}</button></div>
             </div>
             <div className="row document-actions">{draft.viaAi && <button disabled={!!busy} onClick={summarize}>다시 정리</button>}<button disabled={!!busy} onClick={() => setDraft(null)}>취소</button></div>

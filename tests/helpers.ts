@@ -39,12 +39,12 @@ export function recording(p: AiProvider) {
   const provider: AiProvider = {
     name: p.name,
     isAi: p.isAi,
-    restate: (i) => (calls.restate.push(i), p.restate(i)),
-    judge: (i) => (calls.judge.push(i), p.judge(i)),
-    advise: (i) => (calls.advise.push(i), p.advise(i)),
-    chat: (i) => (calls.chat.push(i), p.chat(i)),
-    summarize: (i) => (calls.summarize.push(i), p.summarize(i)),
-    recap: (i) => (calls.recap.push(i), p.recap(i)),
+    restate: (i, o) => (calls.restate.push(i), p.restate(i, o)),
+    judge: (i, o) => (calls.judge.push(i), p.judge(i, o)),
+    advise: (i, o) => (calls.advise.push(i), p.advise(i, o)),
+    chat: (i, o) => (calls.chat.push(i), p.chat(i, o)),
+    summarize: (i, o) => (calls.summarize.push(i), p.summarize(i, o)),
+    recap: (i, o) => (calls.recap.push(i), p.recap(i, o)),
   };
   return { provider, calls };
 }

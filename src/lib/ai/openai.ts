@@ -6,7 +6,7 @@
 //  - 출력은 JSON 스키마로 고정하고, 그래도 서버의 validate-output 검증을 다시 거친다.
 //  - 사용량(토큰)을 기록해 실제 비용을 계산할 수 있게 한다.
 import { ADVISE_SCHEMA, ADVISE_SYSTEM, adviseUser, CHAT_SCHEMA, CHAT_SYSTEM, chatUser, RECAP_SCHEMA, RECAP_SYSTEM, recapUser, SUMMARIZE_SCHEMA, SUMMARIZE_SYSTEM, summarizeUser, JUDGE_SCHEMA, JUDGE_SYSTEM, judgeUser, type JsonSchema, RESTATE_SCHEMA, RESTATE_SYSTEM, restateUser } from "./prompts.ts";
-import type { AdviseInput, AiProvider, AiUsage, ChatInput, JudgeInput, RecapInput, RestateInput, SummarizeInput } from "./types.ts";
+import type { AdviseInput, AiCallOptions, AiProvider, AiUsage, ChatInput, JudgeInput, RecapInput, RestateInput, SummarizeInput } from "./types.ts";
 import { InvalidAiOutput } from "./validate-output.ts";
 
 export const DEFAULT_MODEL = "gpt-6.1-terra";
@@ -60,6 +60,20 @@ export type StructuredRequest = {
 const RETRY_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504]);
 const BACKOFF_MS = [500, 1500];
 
+/** ms 만큼 기다린다. signal 이 취소되면 바로 깨어난다. */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener("abort", done, { once: true });
+  });
+}
+
 export class OpenAiProvider implements AiProvider {
   readonly name = "openai" as const;
   readonly isAi = true;
@@ -80,28 +94,28 @@ export class OpenAiProvider implements AiProvider {
     this.fetchImpl = cfg.fetchImpl ?? fetch;
   }
 
-  restate(input: RestateInput) {
-    return this.structured({ call: "restate", system: RESTATE_SYSTEM, user: restateUser(input), schemaName: "restate", schema: RESTATE_SCHEMA, maxOutputTokens: 500 });
+  restate(input: RestateInput, opts?: AiCallOptions) {
+    return this.structured({ call: "restate", system: RESTATE_SYSTEM, user: restateUser(input), schemaName: "restate", schema: RESTATE_SCHEMA, maxOutputTokens: 500 }, opts?.signal);
   }
 
-  judge(input: JudgeInput) {
-    return this.structured({ call: "judge", system: JUDGE_SYSTEM, user: judgeUser(input), schemaName: "judge", schema: JUDGE_SCHEMA, maxOutputTokens: 3000 });
+  judge(input: JudgeInput, opts?: AiCallOptions) {
+    return this.structured({ call: "judge", system: JUDGE_SYSTEM, user: judgeUser(input), schemaName: "judge", schema: JUDGE_SCHEMA, maxOutputTokens: 3000 }, opts?.signal);
   }
 
-  advise(input: AdviseInput) {
-    return this.structured({ call: "advise", system: ADVISE_SYSTEM, user: adviseUser(input), schemaName: "advise", schema: ADVISE_SCHEMA, maxOutputTokens: 2500 });
+  advise(input: AdviseInput, opts?: AiCallOptions) {
+    return this.structured({ call: "advise", system: ADVISE_SYSTEM, user: adviseUser(input), schemaName: "advise", schema: ADVISE_SCHEMA, maxOutputTokens: 2500 }, opts?.signal);
   }
 
-  chat(input: ChatInput) {
-    return this.structured({ call: "chat", system: CHAT_SYSTEM, user: chatUser(input), schemaName: "chat", schema: CHAT_SCHEMA, maxOutputTokens: 1500 });
+  chat(input: ChatInput, opts?: AiCallOptions) {
+    return this.structured({ call: "chat", system: CHAT_SYSTEM, user: chatUser(input), schemaName: "chat", schema: CHAT_SCHEMA, maxOutputTokens: 1500 }, opts?.signal);
   }
 
-  summarize(input: SummarizeInput) {
-    return this.structured({ call: "summarize", system: SUMMARIZE_SYSTEM, user: summarizeUser(input), schemaName: "summarize", schema: SUMMARIZE_SCHEMA, maxOutputTokens: 900 });
+  summarize(input: SummarizeInput, opts?: AiCallOptions) {
+    return this.structured({ call: "summarize", system: SUMMARIZE_SYSTEM, user: summarizeUser(input), schemaName: "summarize", schema: SUMMARIZE_SCHEMA, maxOutputTokens: 900 }, opts?.signal);
   }
 
-  recap(input: RecapInput) {
-    return this.structured({ call: "recap", system: RECAP_SYSTEM, user: recapUser(input), schemaName: "recap", schema: RECAP_SCHEMA, maxOutputTokens: 900 });
+  recap(input: RecapInput, opts?: AiCallOptions) {
+    return this.structured({ call: "recap", system: RECAP_SYSTEM, user: recapUser(input), schemaName: "recap", schema: RECAP_SCHEMA, maxOutputTokens: 900 }, opts?.signal);
   }
 
   drainUsage(): AiUsage[] {
@@ -110,8 +124,11 @@ export class OpenAiProvider implements AiProvider {
     return u;
   }
 
-  /** 스키마로 고정된 JSON 응답을 받는다. 429·5xx·네트워크 오류는 2회까지 다시 시도한다. */
-  async structured(req: StructuredRequest): Promise<unknown> {
+  /**
+   * 스키마로 고정된 JSON 응답을 받는다. 429·5xx·네트워크 오류는 2회까지 다시 시도한다.
+   * signal 이 취소되면(호출자의 시간 초과 등) 진행 중인 요청을 끊고, 재시도 대기 중이었다면 바로 멈추며, 다시 시도하지 않는다.
+   */
+  async structured(req: StructuredRequest, signal?: AbortSignal): Promise<unknown> {
     const body = {
       model: this.model,
       store: false,
@@ -124,23 +141,29 @@ export class OpenAiProvider implements AiProvider {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
 
+    const cancelled = () => new OpenAiError("cancelled by caller", null, "cancelled");
     let lastErr: unknown;
     for (let attempt = 0; attempt <= BACKOFF_MS.length; attempt++) {
-      if (attempt > 0) await new Promise((r) => setTimeout(r, BACKOFF_MS[attempt - 1]));
+      if (attempt > 0) await sleep(BACKOFF_MS[attempt - 1]!, signal);
+      if (signal?.aborted) throw cancelled();
       const started = Date.now();
+      const attemptLimit = AbortSignal.timeout(this.attemptTimeoutMs);
       let res: Response;
+      let text: string;
       try {
         res = await this.fetchImpl(`${this.baseUrl}/responses`, {
           method: "POST",
           headers,
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(this.attemptTimeoutMs),
+          signal: signal ? AbortSignal.any([signal, attemptLimit]) : attemptLimit,
         });
+        // 본문을 읽는 중에 끊겨도 네트워크 오류로 다룬다 (머리말만 오고 본문이 멈춘 경우)
+        text = await res.text();
       } catch (err) {
+        if (signal?.aborted) throw cancelled(); // 호출자가 포기했다: 다시 시도하지 않는다
         lastErr = new OpenAiError(`network: ${(err as Error)?.name ?? "error"}`, null, "network");
         continue;
       }
-      const text = await res.text();
       if (!res.ok) {
         let code: string | null = null;
         let message = `HTTP ${res.status}`;

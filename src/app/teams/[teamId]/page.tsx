@@ -20,12 +20,12 @@ const FIELDS = [
 ] as const;
 
 const ERROR_TEXT: Record<string, string> = {
-  ai_timeout: "AI 응답이 늦어 중단했습니다. 다시 물어봐 주세요.",
-  ai_error: "AI 호출에 실패했습니다. 다시 물어봐 주세요.",
-  invalid_ai_output: "AI 응답 형식이 올바르지 않았습니다. 다시 물어봐 주세요.",
-  stale: "처리가 중간에 멈췄습니다. 다시 물어봐 주세요.",
-  task_changed: "답하는 사이 프로젝트 정보가 바뀌었습니다. 다시 물어봐 주세요.",
-  source_changed: "답변을 마무리하지 못했습니다. 다시 물어봐 주세요.",
+  ai_timeout: "AI 응답이 늦어 중단했습니다. 다시 시도해 주세요.",
+  ai_error: "AI 호출에 실패했습니다. 다시 시도해 주세요.",
+  invalid_ai_output: "AI 응답 형식이 올바르지 않았습니다. 다시 시도해 주세요.",
+  stale: "처리가 중간에 멈췄습니다. 다시 시도해 주세요.",
+  task_changed: "답하는 사이 프로젝트 정보가 바뀌었습니다. 다시 시도해 주세요.",
+  source_changed: "답변을 마무리하지 못했습니다. 다시 시도해 주세요.",
   requester_left: "팀을 나가 답변을 저장하지 않았습니다.",
   internal: "일시적인 오류가 발생했습니다.",
 };
@@ -195,6 +195,7 @@ function Chat({ project, aiReady, aiStatus }: { project: Project; aiReady: boole
   const [question, setQuestion] = useState("");
   const [error, setError] = useState("");
   const [failedQuestions, setFailedQuestions] = useState<FailedQuestion[]>([]);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const sending = useRef(false);
   const end = useRef<HTMLDivElement>(null);
   const questionBox = useRef<HTMLTextAreaElement>(null);
@@ -240,6 +241,20 @@ function Chat({ project, aiReady, aiStatus }: { project: Project; aiReady: boole
     } finally { sending.current = false; setPending(null); }
   };
 
+  // 실패한 질문을 같은 자리에서 다시 답하게 한다. 질문을 새로 만들지 않으므로 대화에 같은 질문이 두 번 남지 않는다.
+  const retryTurn = async (t: Turn) => {
+    if (sending.current || !aiReady) return;
+    sending.current = true;
+    setRetryingId(t.id); setError("");
+    try {
+      const next = await api<Turn>(`/api/tasks/${project.id}/chat`, { body: { retry: t.id } });
+      setTurns((prev) => prev?.map((x) => (x.id === next.id ? next : x)) ?? prev);
+    } catch (e) {
+      setError(e instanceof TypeError ? "다시 시도한 결과를 확인하지 못했습니다. 연결을 확인한 뒤 다시 시도해 주세요." : (e as Error).message);
+      load(); // 서버에서는 진행됐을 수 있으므로 지금 상태를 다시 읽는다
+    } finally { sending.current = false; setRetryingId(null); }
+  };
+
   return (
     <section className="chat document-body" aria-label="AI 대화">
       <div className="chat-log" aria-live="polite">
@@ -260,7 +275,7 @@ function Chat({ project, aiReady, aiStatus }: { project: Project; aiReady: boole
           <article key={t.id} className="chat-turn">
             <div className="chat-speaker">나 <time dateTime={t.createdAt}>{fmtTime(t.createdAt)}</time></div>
             <p className="chat-question">{t.question}</p>
-            <Answer t={t} />
+            <Answer t={t} retrying={retryingId === t.id} canRetry={aiReady && !pending && !retryingId} onRetry={() => retryTurn(t)} />
           </article>
         ))}
         {failedQuestions.filter((failed) => failed.clientRequestId !== pending?.clientRequestId).map((failed) => (
@@ -269,7 +284,7 @@ function Chat({ project, aiReady, aiStatus }: { project: Project; aiReady: boole
             <p className="chat-question">{failed.question}</p>
             <div role="alert">
               <p className="error">{failed.error}</p>
-              <button type="button" className="small" disabled={!aiReady || !!pending} onClick={() => ask(failed)}>다시 보내기</button>
+              <button type="button" className="small" disabled={!aiReady || !!pending || !!retryingId} onClick={() => ask(failed)}>다시 보내기</button>
             </div>
           </article>
         ))}
@@ -291,7 +306,7 @@ function Chat({ project, aiReady, aiStatus }: { project: Project; aiReady: boole
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); ask(); } }} />
         <div className="composer-footer">
           <span className="composer-help muted" id="chat-composer-help">Enter 보내기 · Shift+Enter 줄바꿈</span>
-          <button className="primary" type="submit" disabled={!aiReady || !question.trim() || !!pending}>{pending ? "답변 작성 중" : "보내기"}</button>
+          <button className="primary" type="submit" disabled={!aiReady || !question.trim() || !!pending || !!retryingId}>{pending || retryingId ? "답변 작성 중" : "보내기"}</button>
         </div>
       </form>
       <p className="muted chat-note">AI 답변은 틀릴 수 있습니다. 대화는 나에게만 보입니다.</p>
@@ -301,9 +316,16 @@ function Chat({ project, aiReady, aiStatus }: { project: Project; aiReady: boole
   );
 }
 
-function Answer({ t }: { t: Turn }) {
-  if (t.status === "pending") return <ChatWaiting />;
-  if (t.status !== "ok" || !t.answer) return <div className="chat-answer error" role="alert">{ERROR_TEXT[t.error ?? "internal"] ?? ERROR_TEXT.internal}</div>;
+function Answer({ t, retrying, canRetry, onRetry }: { t: Turn; retrying: boolean; canRetry: boolean; onRetry: () => void }) {
+  if (t.status === "pending" || retrying) return <ChatWaiting />;
+  if (t.status !== "ok" || !t.answer) {
+    return (
+      <div className="chat-answer" role="alert">
+        <p className="error">{ERROR_TEXT[t.error ?? "internal"] ?? ERROR_TEXT.internal}</p>
+        <button type="button" className="small" disabled={!canRetry} onClick={onRetry}>다시 시도</button>
+      </div>
+    );
+  }
   return (
     <div className="chat-answer">
       <div className="chat-speaker">AI 답변</div>

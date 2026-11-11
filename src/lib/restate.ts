@@ -33,7 +33,7 @@ export async function restateNote(userId: string, noteId: string, versionId: str
   let output: unknown;
   provider.drainUsage?.();
   try {
-    output = await withTimeout(provider.restate({ rawText: row.raw_text }), aiTimeoutMs());
+    output = await withTimeout((signal) => provider.restate({ rawText: row.raw_text }, { signal }), aiTimeoutMs());
   } catch (err) {
     if (err instanceof AiTimeout)
       throw new AppError(504, "ai_timeout", "AI 응답이 늦어 중단했습니다. 원문은 그대로 남아 있습니다.");
