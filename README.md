@@ -77,6 +77,42 @@
 | **`AiProvider` 인터페이스** | AI 없음(`none`)·개발용 가짜(`fake`)·실제(`openai`)를 바꿔 끼움. 테스트는 가짜로, 평가는 실제 모델로 같은 서비스 흐름을 돌림 |
 | **Vitest + 실제 PostgreSQL** | 권한·철회·삭제는 DB 동작이 핵심이라 모의 객체 대신 실제 DB로 시험 (198개) |
 
+### 구조도
+
+```mermaid
+flowchart LR
+  U["팀원의 브라우저<br/>(React 화면)"] -->|"HTTPS · 서명된 세션 쿠키"| API
+  subgraph V["Vercel — Next.js 서버"]
+    API["API 경로<br/>로그인·팀 권한 확인, 요청 제한"]
+    LIB["서버 로직 (src/lib)<br/>메모·회의록·프로젝트·대화"]
+    AI["AI 연결 지점 (src/lib/ai)<br/>지시문 · 출력 검증 · 시간 제한과 취소"]
+    API --> LIB --> AI
+  end
+  LIB <-->|"SQL · 트랜잭션"| DB[("PostgreSQL (Neon)<br/>팀 경계·공개 범위·버전을 제약으로 강제<br/>pg_trgm 검색")]
+  AI <-->|"허용된 지식만 전송 · store: false"| M["OpenAI Responses API"]
+  GH["GitHub (main)"] -->|"병합하면 배포"| V
+  GH -.->|"CI: 타입 검사 · 테스트 198개 · 빌드<br/>배포 확인: 커밋 · 마이그레이션 · 로그인 경로"| V
+```
+
+질문 하나가 답이 되기까지의 순서는 다음과 같다.
+
+```mermaid
+sequenceDiagram
+  participant U as 질문한 팀원
+  participant S as 서버
+  participant D as DB
+  participant M as 모델
+  U->>S: 프로젝트에 질문
+  S->>D: 권한 확인, 이 사람이 쓸 수 있는 팀 지식 찾기
+  Note over S,D: 다른 팀 자료 · 공유 전 메모 · AI 참고를 끈 지식은 여기서 빠진다
+  S->>M: 질문 + 대화 기억 + 허용된 지식 (요청 한정 번호)
+  M-->>S: 답변 + 반영했다고 밝힌 번호
+  S->>S: 번호와 출처 표현 검사 (어긋나면 한 번 다시 쓰게 함)
+  S->>D: 답변과 "어떤 지식이 넘어갔는지" 기록
+  S-->>U: 답변 + 참고한 팀 지식(공개된 것만)
+  Note over S,D: 지식이 철회·수정·삭제되면 이 기록으로 관련 답변을 찾아 다시 쓴다
+```
+
 ## 3. 직접 개발한 부분과 AI·오픈소스 활용 부분
 
 | 구분 | 내용 |
