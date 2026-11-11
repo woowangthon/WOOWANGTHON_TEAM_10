@@ -183,7 +183,7 @@ GitHub 에 푸시하면 `.github/workflows/ci.yml` 이 타입 검사·테스트�
 
 `main`에 병합하면 GitHub Actions의 「배포 확인」(`.github/workflows/deploy-check.yml`)이 운영 배포본을 확인한다. 배포본이 그 커밋으로 바뀌었는지, DB 연결과 마이그레이션이 정상인지, 로그인 경로가 서버 오류 없이 응답하는지(없는 코드·없는 이메일로 로그인하면 401)를 본다. 계정을 만들지 않고 모델도 부르지 않는다. 빨간색이면 병합이 끝난 것이 아니다. 운영 주소가 바뀌면 저장소 Actions 변수 `PRODUCTION_URL`에 넣는다.
 
-직접 돌릴 때(제출할 커밋과 배포본이 같은지 볼 때도 쓴다):
+직접 돌릴 때(제출할 커밋과 배포본이 같은지 볼 때도 쓴다). `--commit`을 주면 배포본이 알려 주는 커밋이 그것과 같을 때만 통과한다:
 
 ```bash
 npm run deploy:check -- --url=https://<프로젝트>.vercel.app --commit=<제출할 커밋 해시>
