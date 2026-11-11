@@ -39,9 +39,10 @@ class AiCallError extends Error {
   }
 }
 
-export async function callAi<T>(fn: () => Promise<T>): Promise<T> {
+/** 모델 호출 하나에 시간 제한을 건다. fn 은 받은 signal 을 제공자에 넘겨야 시간 초과 때 요청이 실제로 멈춘다. */
+export async function callAi<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
   try {
-    return await withTimeout(fn(), aiTimeoutMs());
+    return await withTimeout(fn, aiTimeoutMs());
   } catch (err) {
     if (err instanceof AiTimeout) throw err;
     throw new AiCallError(err);
@@ -176,8 +177,8 @@ async function runPipeline(
     conditions: c.conditions,
   });
 
-  const judgedRaw = await callAi(() =>
-    provider.judge({ task: ctx, candidates: [...byRef].map(([ref, c]) => forAi(ref, c)) }),
+  const judgedRaw = await callAi((signal) =>
+    provider.judge({ task: ctx, candidates: [...byRef].map(([ref, c]) => forAi(ref, c)) }, { signal }),
   );
   const judged = parseJudgments(judgedRaw, new Set(byRef.keys()));
   if (!judged.relevant.length) {
@@ -188,7 +189,7 @@ async function runPipeline(
   const refByVersion = new Map(judged.relevant.map((j) => [byRef.get(j.ref)!.versionId, j.ref]));
   const declined = await declinedFor(task.id!, userId, refByVersion);
 
-  const adviseRaw = await callAi(() => provider.advise({ task: ctx, notes: relevant, declined }));
+  const adviseRaw = await callAi((signal) => provider.advise({ task: ctx, notes: relevant, declined }, { signal }));
   const sources = new Map<string, SourceNote>(
     judged.relevant.map((j) => {
       const c = byRef.get(j.ref)!;

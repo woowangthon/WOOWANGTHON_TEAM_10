@@ -103,7 +103,7 @@ export async function summarizeMemos(userId: string, teamId: string, input: { no
   let output: unknown;
   provider.drainUsage?.();
   try {
-    output = await withTimeout(provider.summarize({ memos }), aiTimeoutMs());
+    output = await withTimeout((signal) => provider.summarize({ memos }, { signal }), aiTimeoutMs());
   } catch (err) {
     if (err instanceof AiTimeout) throw new AppError(504, "ai_timeout", "AI 응답이 늦어 중단했습니다. 다시 시도하거나 직접 정리해 주세요.");
     console.error("summarize failed", (err as Error)?.name, String((err as Error)?.message).slice(0, 200));

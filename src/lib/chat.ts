@@ -89,9 +89,9 @@ async function historyFor(taskId: string, userId: string, before: string | null)
  */
 async function generate(provider: AiProvider, input: ChatInput, kinds: ReadonlyMap<string, KnowledgeKind>) {
   const validRefs = new Set(kinds.keys());
-  let out = validateChatOutput(await callAi(() => provider.chat(input)), validRefs);
+  let out = validateChatOutput(await callAi((signal) => provider.chat(input, { signal })), validRefs);
   if (sourceLeaks(out.answer, input.question, citable(out.used, kinds)).length) {
-    const retry = validateChatOutput(await callAi(() => provider.chat({ ...input, retryNote: RETRY_NOTE })), validRefs);
+    const retry = validateChatOutput(await callAi((signal) => provider.chat({ ...input, retryNote: RETRY_NOTE }, { signal })), validRefs);
     const allowed = citable(retry.used, kinds);
     out = sourceLeaks(retry.answer, input.question, allowed).length
       ? { ...retry, answer: dropLeakySentences(retry.answer, input.question, allowed) }
@@ -158,11 +158,14 @@ async function memoryFor(task: TaskRow, userId: string, cutoff: string | null, p
   const kept: Memory = mem ? { summary: mem.summary, ids: mem.input_version_ids } : null;
   if (older.rowCount! < (mem ? MEMORY_FOLD_AT : 1)) return kept;
   try {
-    const raw = await callAi(() =>
-      provider.recap({
-        previous: mem?.summary ?? null,
-        turns: older.rows.map((t) => ({ question: clip(t.question, 600), answer: t.inputs_live ? clip(t.body, 800) : null })),
-      }),
+    const raw = await callAi((signal) =>
+      provider.recap(
+        {
+          previous: mem?.summary ?? null,
+          turns: older.rows.map((t) => ({ question: clip(t.question, 600), answer: t.inputs_live ? clip(t.body, 800) : null })),
+        },
+        { signal },
+      ),
     );
     const summary = raw && typeof raw === "object" ? (raw as Record<string, unknown>).summary : undefined;
     if (typeof summary !== "string" || !summary.trim()) return kept;
@@ -274,12 +277,55 @@ export async function askInProject(
     [task.team_id, task.id, userId, task.version, JSON.stringify({ ...projectOf(task), question }), question, provider.name, clientRequestId],
   );
   if (!ins.rowCount) {
+    // 같은 요청 식별자가 이미 있다: 응답을 받지 못한 화면이 같은 질문을 다시 보낸 것이다.
+    //  - 처리 중이거나 이미 답했다면 그 결과를 그대로 돌려준다 (질문을 두 번 저장하거나 모델을 두 번 부르지 않는다)
+    //  - 실패로 끝났다면 같은 자리에서 다시 답한다. 실패 결과를 그대로 돌려주면 몇 번을 다시 보내도 실패만 보인다
     const ex = await db.query("select id from advice_requests where requester_id = $1 and client_request_id = $2", [userId, clientRequestId]);
-    return getChatTurn(userId, ex.rows[0].id);
+    const existingId = ex.rows[0].id as string;
+    await rerunFailed(userId, task, existingId, provider);
+    return getChatTurn(userId, existingId);
   }
   const requestId = ins.rows[0].id as string;
   await audit(db, userId, "chat.ask", requestId, { provider: provider.name });
   await answer(userId, task, requestId, question, null, provider);
+  return getChatTurn(userId, requestId);
+}
+
+/**
+ * 실패로 끝난 질문을 같은 자리에서 다시 답한다 (모델 오류·시간 초과·처리 중 멈춤).
+ * 실패한 요청만 대상이다. 여러 곳에서 동시에 다시 시도해도 상태를 원자적으로 바꾼 한쪽만 모델을 부른다.
+ * 다시 답했으면 true, 대상이 아니면(처리 중·이미 답함·다른 프로젝트·남의 질문) false.
+ */
+async function rerunFailed(userId: string, task: TaskRow, requestId: string, provider: AiProvider): Promise<boolean> {
+  const db = getPool();
+  // 5분 넘게 '처리 중'으로 남은 요청(서버가 중간에 멈춘 경우)은 먼저 실패로 정리해 다시 시도할 수 있게 한다
+  await markStale(db, "id = $1", [requestId]);
+  const claim = await db.query(
+    `update advice_requests r
+     set status = 'pending', error = null, finished_at = null, started_at = now(), task_version = $4, provider = $5
+     where r.id = $1 and r.requester_id = $2 and r.task_id = $3 and r.kind = 'chat' and r.status = 'failed'
+     returning r.question, r.created_at::text as at_text,
+       not exists (select 1 from advice_requests later
+                   where later.task_id = r.task_id and later.requester_id = r.requester_id and later.kind = 'chat'
+                     and later.created_at > r.created_at) as is_latest`,
+    [requestId, userId, task.id, task.version, provider.name],
+  );
+  if (!claim.rowCount) return false;
+  // 실패한 시도가 남긴 것이 있다면 지운다: 다시 실패해도 예전 내용이 되살아나지 않게
+  await db.query("delete from advice_items where request_id = $1", [requestId]);
+  await audit(db, userId, "chat.retry", requestId, { provider: provider.name });
+  const row = claim.rows[0] as { question: string; at_text: string; is_latest: boolean };
+  // 마지막 질문이면 새 질문처럼 답한다(대화 기억 포함). 그 뒤에 다른 질문이 있었다면 그 시점까지의 대화만 넘긴다
+  await answer(userId, task, requestId, row.question, row.is_latest ? null : row.at_text, provider);
+  return true;
+}
+
+/** 화면의 「다시 시도」: 실패한 내 질문을 같은 자리에서 다시 답한다. 실패 상태가 아니면 지금 상태를 그대로 돌려준다. */
+export async function retryChatTurn(userId: string, taskId: string, requestId: string, provider: AiProvider) {
+  const task = await loadTask(userId, taskId);
+  if (!provider.isAi) throw aiUnavailable();
+  await getChatTurn(userId, requestId); // 팀·소유 확인 (남의 질문·없는 질문은 404)
+  await rerunFailed(userId, task, requestId, provider);
   return getChatTurn(userId, requestId);
 }
 

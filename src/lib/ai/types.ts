@@ -85,16 +85,22 @@ export type AiUsage = {
   ms: number;
 };
 
+/**
+ * 모델 호출 옵션. signal 이 취소되면 진행 중인 요청을 끊고 재시도도 하지 않는다.
+ * 호출자가 시간 초과로 포기한 뒤에도 요청이 계속되면 비용만 나가고 결과는 버려진다 (ai/timeout.ts 가 이 신호를 준다).
+ */
+export type AiCallOptions = { signal?: AbortSignal };
+
 export interface AiProvider {
   readonly name: "none" | "fake" | "openai";
   /** true 일 때만 출력이 모델 생성물이다. false 면 AI 를 호출하지 않는다. */
   readonly isAi: boolean;
-  restate(input: RestateInput): Promise<unknown>;
-  judge(input: JudgeInput): Promise<unknown>;
-  advise(input: AdviseInput): Promise<unknown>;
-  chat(input: ChatInput): Promise<unknown>;
-  summarize(input: SummarizeInput): Promise<unknown>;
-  recap(input: RecapInput): Promise<unknown>;
+  restate(input: RestateInput, opts?: AiCallOptions): Promise<unknown>;
+  judge(input: JudgeInput, opts?: AiCallOptions): Promise<unknown>;
+  advise(input: AdviseInput, opts?: AiCallOptions): Promise<unknown>;
+  chat(input: ChatInput, opts?: AiCallOptions): Promise<unknown>;
+  summarize(input: SummarizeInput, opts?: AiCallOptions): Promise<unknown>;
+  recap(input: RecapInput, opts?: AiCallOptions): Promise<unknown>;
   /** 마지막으로 가져간 이후의 사용량(토큰·시간). 비용 기록용. 없으면 빈 배열. */
   drainUsage?(): AiUsage[];
 }
