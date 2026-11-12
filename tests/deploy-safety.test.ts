@@ -27,7 +27,7 @@ describe("코드가 요구하는 마이그레이션", () => {
   it("빠진 마이그레이션을 파일명 순서로 알려준다", () => {
     expect(pendingMigrations(REQUIRED_MIGRATIONS)).toEqual([]);
     const upTo007 = REQUIRED_MIGRATIONS.filter((name) => name < "008");
-    expect(pendingMigrations(upTo007)).toEqual(["008_email_free_accounts.sql", "009_consumed_auth_tickets.sql"]);
+    expect(pendingMigrations(upTo007)).toEqual(["008_email_free_accounts.sql", "009_consumed_auth_tickets.sql", "010_note_request_ids.sql"]);
     // DB 가 코드보다 앞서 있는 것(되돌린 배포)은 빠진 것이 아니다
     expect(pendingMigrations([...REQUIRED_MIGRATIONS, "999_future.sql"])).toEqual([]);
   });

@@ -33,9 +33,13 @@ export function checkEnvironment(env: Env): StartupProblem[] {
     problems.push({ fatal: true, message: "AI_PROVIDER=fake 는 운영 환경(또는 Vercel)에서 쓸 수 없습니다. none 으로 바꿔 주세요." });
   } else if (provider === "openai") {
     if (!env.OPENAI_API_KEY?.trim()) {
+      // 운영(또는 Vercel)에서는 키 없이 AI 를 켤 수 없다: 서버는 뜨는데 모든 AI 호출이 실패하는 상태를 막는다
+      const fatal = isProd || !!env.VERCEL;
       problems.push({
-        fatal: false,
-        message: "OPENAI_API_KEY 가 환경변수에 없습니다. 프록시가 키를 주입하는 개발 환경이 아니면 AI 호출이 실패합니다.",
+        fatal,
+        message: fatal
+          ? "OPENAI_API_KEY 가 없습니다. 운영 환경에서는 키 없이 AI_PROVIDER=openai 를 쓸 수 없습니다 (AI 없이 운영하려면 AI_PROVIDER=none)."
+          : "OPENAI_API_KEY 가 환경변수에 없습니다. 프록시가 키를 주입하는 개발 환경이 아니면 AI 호출이 실패합니다.",
       });
     }
     const effort = (env.OPENAI_REASONING_EFFORT ?? "none").trim();

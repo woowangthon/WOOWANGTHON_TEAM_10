@@ -38,8 +38,11 @@ export const noAiProvider: AiProvider = {
 };
 
 let devFake: FakeProvider | undefined;
-let openai: { key: string; provider: OpenAiProvider } | undefined;
 
+/**
+ * 요청마다 부른다. OpenAI 제공자는 부를 때마다 새로 만든다: 사용량(토큰) 기록이 제공자 안에 쌓이므로,
+ * 하나를 함께 쓰면 동시에 온 두 요청의 기록이 섞인다(한쪽이 비운 기록에 다른 쪽 호출이 빠지거나 더해진다).
+ */
 export function getProvider(env: Env = process.env): AiProvider {
   const name = (env.AI_PROVIDER ?? "none").trim();
   if (name === "" || name === "none") return noAiProvider;
@@ -49,12 +52,7 @@ export function getProvider(env: Env = process.env): AiProvider {
     }
     return (devFake ??= new FakeProvider());
   }
-  if (name === "openai") {
-    const cfg = openAiConfigFromEnv(env);
-    const key = JSON.stringify([cfg.model, cfg.reasoningEffort, cfg.baseUrl, cfg.apiKey ? "k" : "-"]);
-    if (openai?.key !== key) openai = { key, provider: new OpenAiProvider(cfg) };
-    return openai.provider;
-  }
+  if (name === "openai") return new OpenAiProvider(openAiConfigFromEnv(env));
   throw new Error(`Unsupported AI_PROVIDER: ${name}`);
 }
 

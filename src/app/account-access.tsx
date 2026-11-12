@@ -8,8 +8,10 @@ const errorMessage = (error: unknown) => error instanceof TypeError
   ? "요청을 마치지 못했습니다. 연결을 확인한 뒤 다시 시도해 주세요."
   : error instanceof Error ? error.message : "요청을 마치지 못했습니다.";
 
+import { startFailure, type StartFailure } from "./start-errors.ts";
+
 /** 개인 코드는 React 상태에만 두고 주소·브라우저 저장소에는 쓰지 않는다. */
-function CodeReceipt({ code, onContinue, label, busy, error, onBack, onRecover, rotating = false }: { code: string; onContinue: () => void; label: string; busy: boolean; error: string; onBack: () => void; onRecover: () => void; rotating?: boolean }) {
+function CodeReceipt({ code, onContinue, label, busy, failure, onBack, onRecover, rotating = false }: { code: string; onContinue: () => void; label: string; busy: boolean; failure: StartFailure | null; onBack: () => void; onRecover: () => void; rotating?: boolean }) {
   const [saved, setSaved] = useState(false);
   const [notice, setNotice] = useState("");
   useEffect(() => {
@@ -31,14 +33,17 @@ function CodeReceipt({ code, onContinue, label, busy, error, onBack, onRecover, 
   };
   return <section className="login-receipt" aria-labelledby="code-receipt-title">
     <h1 id="code-receipt-title">개인 로그인 코드를 먼저 보관하세요</h1>
-    <p>{error ? "완료 여부를 확인하지 못했습니다. 보관한 코드로 계정을 열어 확인할 수 있습니다." : rotating ? "아직 코드를 바꾸지 않았습니다. 새 코드를 보관한 뒤 변경을 완료하세요." : "아직 계정을 만들지 않았습니다. 코드를 보관한 뒤 팀을 열면 시작됩니다."}</p>
+    <p>{failure?.uncertain ? "완료 여부를 확인하지 못했습니다. 보관한 코드로 계정을 열어 확인할 수 있습니다." : rotating ? "아직 코드를 바꾸지 않았습니다. 새 코드를 보관한 뒤 변경을 완료하세요." : "아직 계정을 만들지 않았습니다. 코드를 보관한 뒤 팀을 열면 시작됩니다."}</p>
     <label className="field-label" htmlFor="issued-login-code">개인 로그인 코드</label>
     <textarea id="issued-login-code" className="access-code" readOnly rows={2} value={code} spellCheck={false} onFocus={(e) => e.currentTarget.select()} />
     <div className="access-code-actions"><button type="button" onClick={copy}>코드 복사</button><button type="button" onClick={download}>파일로 저장</button></div>
     {notice && <p className="account-help" role="status">{notice}</p>}
     <p className="account-help">다시 들어올 때 필요한 개인 코드입니다. 팀원에게 보내는 초대 코드가 아닙니다. 화면을 닫으면 다시 표시하지 않으며, 분실하면 계정을 복구할 수 없습니다. 이 기기의 로그인은 7일간 유지됩니다. 30분 안에 다음 단계를 완료해 주세요.</p>
     <p><label><input type="checkbox" checked={saved} disabled={busy} onChange={(e) => setSaved(e.target.checked)} /> 개인 로그인 코드를 보관했습니다</label></p>
-    {error && <div><p className="error" role="alert">{error}</p><p className="account-help">응답을 받지 못했어도 완료됐을 수 있습니다. 보관한 코드로 계정을 열어 확인할 수 있습니다.</p><button type="button" disabled={busy} onClick={onRecover}>보관한 코드로 계정 열기</button></div>}
+    {failure && <div><p className="error" role="alert">{failure.message}</p>
+      {/* 서버가 분명히 거절한 요청(틀린 초대 코드 등)에는 "완료됐을 수 있다"고 안내하지 않는다: 무엇을 고칠지 알려 준다 */}
+      <p className="account-help">{failure.uncertain ? "응답을 받지 못했어도 완료됐을 수 있습니다. 보관한 코드로 계정을 열어 확인할 수 있습니다." : failure.canRecover ? "이미 완료된 요청입니다. 보관한 코드로 계정을 열 수 있습니다." : rotating ? "코드는 바뀌지 않았습니다. 이전으로 돌아가 입력을 확인한 뒤 다시 시도해 주세요." : "아직 계정을 만들지 않았습니다. 이전으로 돌아가 입력을 고친 뒤 다시 시도해 주세요. 그때 개인 로그인 코드를 새로 받으므로, 지금 보관한 코드는 버려도 됩니다."}</p>
+      {failure.canRecover && <button type="button" disabled={busy} onClick={onRecover}>보관한 코드로 계정 열기</button>}</div>}
     <div className="access-code-actions"><button className="primary" type="button" disabled={!saved || busy} onClick={onContinue}>{busy ? "처리 중…" : label}</button><button type="button" disabled={busy} onClick={onBack}>이전으로</button></div>
   </section>;
 }
@@ -52,6 +57,7 @@ export function Login({ onDone }: { onDone: () => void }) {
   const [loginCode, setLoginCode] = useState("");
   const [prepared, setPrepared] = useState<PreparedCode | null>(null);
   const [error, setError] = useState("");
+  const [failure, setFailure] = useState<StartFailure | null>(null);
   const [busy, setBusy] = useState(false);
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); if (busy) return;
@@ -65,17 +71,17 @@ export function Login({ onDone }: { onDone: () => void }) {
     finally { setBusy(false); }
   };
   const finishStart = async () => {
-    if (!prepared || busy) return; setBusy(true); setError("");
+    if (!prepared || busy) return; setBusy(true); setFailure(null);
     try {
       const body = { displayName: name, registrationTicket: prepared.registrationTicket, ...(teamAction === "create" ? { teamName } : { inviteCode }) };
       const result = await api<{ team: { id: string } }>("/api/auth/signup", { body });
       location.assign(`/teams/${encodeURIComponent(result.team.id)}`);
-    } catch (err) { setError(errorMessage(err)); setBusy(false); }
+    } catch (err) { setFailure(startFailure(err)); setBusy(false); }
   };
   const recoverStart = async () => {
-    if (!prepared || busy) return; setBusy(true); setError("");
+    if (!prepared || busy) return; setBusy(true); setFailure(null);
     try { await api("/api/auth/login", { body: { loginCode: prepared.loginCode } }); onDone(); }
-    catch (err) { setError(errorMessage(err)); setBusy(false); }
+    catch (err) { setFailure({ ...startFailure(err), uncertain: true, canRecover: true }); setBusy(false); }
   };
   return <main className="account-layout">
     <aside className="account-sidebar">
@@ -83,7 +89,7 @@ export function Login({ onDone }: { onDone: () => void }) {
       <div className="account-intro"><p>팀이 남긴 생각을<br />다음 작업으로 이어 갑니다.</p><ol><li>떠오른 생각을 내 메모에 남깁니다.</li><li>팀과 나눌 내용을 확인해 공유합니다.</li><li>프로젝트에서 질문하면 AI가 참고합니다.</li></ol></div>
     </aside>
     <section className="account-content">
-      {prepared ? <CodeReceipt code={prepared.loginCode} label={teamAction === "create" ? "보관한 코드로 팀 만들기" : "팀에 참여하고 시작하기"} busy={busy} error={error} onContinue={finishStart} onRecover={recoverStart} onBack={() => { setPrepared(null); setError(""); }} /> : <div className="auth-form">
+      {prepared ? <CodeReceipt code={prepared.loginCode} label={teamAction === "create" ? "보관한 코드로 팀 만들기" : "팀에 참여하고 시작하기"} busy={busy} failure={failure} onContinue={finishStart} onRecover={recoverStart} onBack={() => { setPrepared(null); setError(""); setFailure(null); }} /> : <div className="auth-form">
         <p className="document-meta">팀 기억 조언자</p>
         <h1>함께 쌓아 가는 팀의 기록</h1>
         <p className="account-help">메모와 회의록을 남기고, 프로젝트에서 질문하세요.</p>
@@ -153,16 +159,17 @@ export function LoginCodeSettings() {
   const [currentCode, setCurrentCode] = useState(""); const [prepared, setPrepared] = useState<PreparedCode | null>(null);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const [notice, setNotice] = useState("");
+  const [failure, setFailure] = useState<StartFailure | null>(null);
   const finish = async (recover = false) => {
-    if (!prepared || busy) return; setBusy(true); setError("");
+    if (!prepared || busy) return; setBusy(true); setFailure(null);
     try {
       if (recover) await api("/api/auth/login", { body: { loginCode: prepared.loginCode } });
       else await api("/api/auth/code", { body: { loginCode: currentCode, registrationTicket: prepared.registrationTicket } });
       setPrepared(null); setCurrentCode(""); setNotice("새 코드로 변경했습니다. 보관한 코드를 사용해 주세요.");
-    } catch (err) { setError(errorMessage(err)); }
+    } catch (err) { setFailure(recover ? { ...startFailure(err), uncertain: true, canRecover: true } : startFailure(err)); }
     finally { setBusy(false); }
   };
-  if (prepared) return <CodeReceipt code={prepared.loginCode} label="보관한 새 코드로 변경하기" rotating busy={busy} error={error} onContinue={() => finish()} onRecover={() => finish(true)} onBack={() => { setPrepared(null); setError(""); }} />;
+  if (prepared) return <CodeReceipt code={prepared.loginCode} label="보관한 새 코드로 변경하기" rotating busy={busy} failure={failure} onContinue={() => finish()} onRecover={() => finish(true)} onBack={() => { setPrepared(null); setError(""); setFailure(null); }} />;
   return <details className="auth-secondary" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}><summary>개인 로그인 코드 바꾸기</summary><form onSubmit={async (event) => {
     event.preventDefault(); if (busy) return; setBusy(true); setError("");
     try { setNotice(""); setPrepared(await api<PreparedCode>("/api/auth/prepare", { body: { purpose: "rotate" } })); }

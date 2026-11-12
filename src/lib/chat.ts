@@ -14,13 +14,14 @@
 import { requireMembership } from "./access.ts";
 import { callAi, errorCode, finalize, markStale, recordInputs, recordUsage } from "./advice.ts";
 import { aiUnavailable } from "./ai/providers.ts";
+import { aiBudgetRemainingMs, aiTimeoutMs, withAiBudget } from "./ai/timeout.ts";
 import type { AiProvider, CandidateForAi, ChatInput, ProjectContext } from "./ai/types.ts";
 import { dropLeakySentences, InvalidAiOutput, sourceLeaks, validateChatOutput, type CitableUse } from "./ai/validate-output.ts";
 import { audit, getPool } from "./db.ts";
 import { notFound } from "./errors.ts";
 import { MAX_MEETING } from "./meetings.ts";
 import { findCandidates, type Candidate } from "./search.ts";
-import { clip, text, uuid } from "./validate.ts";
+import { cleanText, clip, text, uuid } from "./validate.ts";
 
 /** 모델에 건넬 팀 지식 최대 수. 공유 지식이 이 이하인 팀은 키워드가 안 겹쳐도 전부 건넨다 */
 const MAX_KNOWLEDGE = 30;
@@ -31,6 +32,8 @@ const MAX_QUESTION = 2000;
 const MAX_MEETING_CHARS = MAX_MEETING;
 /** 한 번 열 때 다시 쓸 최대 답변 수 (나머지는 다음 요청에서) */
 const REFRESH_BATCH = 3;
+/** 답변 하나를 다시 쓰기 시작하는 데 필요한 최소 남은 시간. 이보다 적게 남았으면 시작하지 않는다(시작하면 시간 초과로 실패만 남는다) */
+const MIN_REWRITE_MS = 20_000;
 
 const RETRY_NOTE =
   "앞선 답변 초안이 출처 표시 규칙을 어겼다. 출처는 실제로 반영한 '팀 공유 메모'와 '회의록'만 밝힐 수 있다. private 지식이나 반영하지 않은 지식을 메모·회의·기록에서 나온 것처럼 말하지 말고, 비공개 정보가 있다는 사실도 드러내지 말고 다시 답하라.";
@@ -91,9 +94,9 @@ async function historyFor(taskId: string, userId: string, before: string | null)
  */
 async function generate(provider: AiProvider, input: ChatInput, kinds: ReadonlyMap<string, KnowledgeKind>) {
   const validRefs = new Set(kinds.keys());
-  let out = validateChatOutput(await callAi((signal) => provider.chat(input, { signal })), validRefs);
+  let out = validateChatOutput(await callAi((signal) => provider.chat(input, { signal })), validRefs, input.question);
   if (sourceLeaks(out.answer, input.question, citable(out.used, kinds)).length) {
-    const retry = validateChatOutput(await callAi((signal) => provider.chat({ ...input, retryNote: RETRY_NOTE }, { signal })), validRefs);
+    const retry = validateChatOutput(await callAi((signal) => provider.chat({ ...input, retryNote: RETRY_NOTE }, { signal })), validRefs, input.question);
     const allowed = citable(retry.used, kinds);
     out = sourceLeaks(retry.answer, input.question, allowed).length
       ? { ...retry, answer: dropLeakySentences(retry.answer, input.question, allowed) }
@@ -179,8 +182,9 @@ async function memoryFor(task: TaskRow, userId: string, cutoff: string | null, p
         { signal },
       ),
     );
-    const summary = raw && typeof raw === "object" ? (raw as Record<string, unknown>).summary : undefined;
-    if (typeof summary !== "string" || !summary.trim()) return kept;
+    const rawSummary = raw && typeof raw === "object" ? (raw as Record<string, unknown>).summary : undefined;
+    const summary = typeof rawSummary === "string" ? cleanText(rawSummary) : "";
+    if (!summary) return kept;
     // 답변까지 접어 넣은 턴의 지식만 기록한다. 질문만 넣은 턴(지식이 바뀐 턴)의 지식은 요약에 들어가지 않았다.
     // 그것까지 기록하면 요약이 만들자마자 '무효'가 되어 질문마다 버려지고, 요약을 물려받은 새 답변도 대화에서 빠진다.
     const ids = [...new Set([...(mem?.input_version_ids ?? []), ...older.rows.filter((t) => t.inputs_live).flatMap((t) => t.input_version_ids as string[])])];
@@ -199,8 +203,16 @@ async function memoryFor(task: TaskRow, userId: string, cutoff: string | null, p
   }
 }
 
-/** 요청 하나의 답변을 만들어 저장한다. 요청은 'pending' 상태여야 한다(새 질문 또는 다시 쓰기). */
-async function answer(userId: string, task: TaskRow, requestId: string, question: string, createdAt: string | null, provider: AiProvider) {
+/**
+ * 요청 하나의 답변을 만들어 저장한다. 요청은 'pending' 상태여야 한다(새 질문 또는 다시 쓰기).
+ * 모델을 최대 3번(요약 + 답변 + 다시 쓰기) 부르므로 요청 전체 시간 안에서 돈다: 서버 함수가 먼저 끊겨
+ * 실패를 기록하지 못하는 일이 없게 한다(ai/timeout.ts).
+ */
+function answer(userId: string, task: TaskRow, requestId: string, question: string, createdAt: string | null, provider: AiProvider) {
+  return withAiBudget(() => answerWithinBudget(userId, task, requestId, question, createdAt, provider));
+}
+
+async function answerWithinBudget(userId: string, task: TaskRow, requestId: string, question: string, createdAt: string | null, provider: AiProvider) {
   const db = getPool();
   provider.drainUsage?.();
   try {
@@ -436,7 +448,10 @@ export async function refreshStale(userId: string, taskId: string, provider: AiP
   const stale = (await listChat(userId, taskId)).filter((t) => t.stale).slice(0, REFRESH_BATCH);
   if (stale.length && !provider.isAi) throw aiUnavailable();
   const db = getPool();
+  // 여러 답변을 다시 쓰는 것도 한 요청이다: 전체 시간을 함께 쓰고, 한 번 더 쓸 시간이 남지 않으면 나머지는 다음 요청에 맡긴다
+  await withAiBudget(async () => {
   for (const t of stale) {
+    if (aiBudgetRemainingMs() < Math.min(aiTimeoutMs(), MIN_REWRITE_MS)) break;
     const claim = await db.query(
       `update advice_requests set status = 'pending', error = null, finished_at = null, started_at = now(), task_version = $3
        where id = $1 and requester_id = $2 and kind = 'chat' and status in ('ok', 'invalidated')
@@ -449,5 +464,6 @@ export async function refreshStale(userId: string, taskId: string, provider: AiP
     await audit(db, userId, "chat.refresh", t.id, { provider: provider.name });
     await answer(userId, task, t.id, t.question, claim.rows[0].at_text as string, provider);
   }
+  });
   return listChat(userId, taskId);
 }

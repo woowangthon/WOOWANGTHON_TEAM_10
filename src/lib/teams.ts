@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
 import { requireMembership } from "./access.ts";
 import { audit, getPool, withTx } from "./db.ts";
-import { notFound } from "./errors.ts";
+import { inviteNotFound, notFound } from "./errors.ts";
+import { withdrawAiOnlyNotesOf } from "./notes.ts";
 import { text } from "./validate.ts";
 
 export async function createTeam(userId: string, nameInput: unknown) {
@@ -28,7 +29,7 @@ export async function joinTeam(userId: string, codeInput: unknown) {
   return withTx(async (tx) => {
     // 동시 참여·나가기와 꼬이지 않게 팀 행을 잠근다 (leaveTeamInTx 와 같은 잠금)
     const t = await tx.query("select id, name from teams where invite_code = $1 for update", [code]);
-    if (!t.rowCount) throw notFound();
+    if (!t.rowCount) throw inviteNotFound();
     const team = t.rows[0];
     const me = await tx.query("select status from memberships where team_id = $1 and user_id = $2", [team.id, userId]);
     if (me.rows[0]?.status === "active") return { id: team.id as string, name: team.name as string };
@@ -55,6 +56,8 @@ export async function leaveTeamInTx(tx: PoolClient, userId: string, teamId: stri
   );
   if (!me.rowCount) throw notFound();
   await tx.query("update memberships set status = 'left' where team_id = $1 and user_id = $2", [teamId, userId]);
+  // 나가는 사람의 'AI만 참고' 메모는 철회한다: 작성자가 없으면 아무도 볼 수 없는 채로 AI 만 계속 참고하게 된다
+  const withdrawnAiOnly = await withdrawAiOnlyNotesOf(tx, userId, teamId);
 
   let promoted: { userId: string; displayName: string } | null = null;
   if (me.rows[0].role === "lead") {
@@ -74,18 +77,19 @@ export async function leaveTeamInTx(tx: PoolClient, userId: string, teamId: stri
       if (next.rowCount) promoted = { userId: next.rows[0].user_id, displayName: next.rows[0].display_name };
     }
   }
-  return promoted;
+  return { promoted, withdrawnAiOnly };
 }
 
 /**
  * 팀 나가기. 유일한 팀장이 나가면 가장 오래된 팀원에게 팀장을 넘긴다 (팀이 팀장 없이 남지 않게).
- * 나간 뒤에는 팀 자료를 볼 수 없지만, 이미 공유한 메모는 팀에 남는다 (원안 §8.1: 사전 합의 사항).
+ * 나간 뒤에는 팀 자료를 볼 수 없지만, 팀에 공개한 메모는 팀에 남는다 (원안 §8.1: 사전 합의 사항).
+ * 'AI만 참고'로 공유한 메모는 철회한다 (notes.ts withdrawAiOnlyNotesOf).
  */
 export async function leaveTeam(userId: string, teamId: string) {
   return withTx(async (tx) => {
-    const promoted = await leaveTeamInTx(tx, userId, teamId);
-    await audit(tx, userId, "team.leave", teamId, { promoted: promoted?.userId ?? null });
-    return { left: true, promoted: promoted ? { displayName: promoted.displayName } : null };
+    const { promoted, withdrawnAiOnly } = await leaveTeamInTx(tx, userId, teamId);
+    await audit(tx, userId, "team.leave", teamId, { promoted: promoted?.userId ?? null, withdrawnAiOnly });
+    return { left: true, promoted: promoted ? { displayName: promoted.displayName } : null, withdrawnAiOnly };
   });
 }
 

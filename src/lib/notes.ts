@@ -9,7 +9,7 @@ import type pg from "pg";
 import { requireMembership } from "./access.ts";
 import { audit, getPool, withTx, type Db } from "./db.ts";
 import { badRequest, conflict, notFound } from "./errors.ts";
-import { bool, cleanText, text } from "./validate.ts";
+import { bool, cleanText, text, uuid } from "./validate.ts";
 
 export const NOTE_KINDS = ["proposal", "guess", "question", "objection"] as const;
 export type NoteKind = (typeof NOTE_KINDS)[number];
@@ -66,12 +66,16 @@ function buildSearchText(rawText: string, restated: Restated | null): string {
   return [rawText, restated.summary, ...restated.conditions, ...restated.uncertainties].join("\n");
 }
 
-async function lockOwnNote(tx: pg.PoolClient, userId: string, noteId: string) {
+/**
+ * allowAfterLeaving: 철회·삭제에만 쓴다. 팀을 나간 뒤에도 작성자는 자기 메모를 거둘 수 있어야 한다
+ * (나간 사람의 메모를 아무도 철회·삭제할 수 없으면 AI 가 계속 참고한다). 회의록은 팀 기록이라 현재 팀원만 다룬다.
+ */
+async function lockOwnNote(tx: pg.PoolClient, userId: string, noteId: string, opts: { allowAfterLeaving?: boolean } = {}) {
   const r = await tx.query("select * from notes where id = $1 for update", [noteId]);
   const note = r.rows[0];
   // 남의 메모 / 없는 메모 / 삭제된 메모를 구분하지 않는다
   if (!note || note.author_id !== userId || note.share_state === "deleted") throw notFound();
-  await requireMembership(tx, userId, note.team_id);
+  if (!opts.allowAfterLeaving || note.origin === "meeting") await requireMembership(tx, userId, note.team_id);
   return note;
 }
 
@@ -145,15 +149,38 @@ export async function purgeAdviceForNote(tx: Db, noteId: string): Promise<number
   return r.rowCount ?? 0;
 }
 
-export async function createNote(userId: string, teamId: string, input: { rawText: unknown; allowExternalAi?: unknown }) {
+/**
+ * clientRequestId: 화면이 저장마다 만든 식별자. 응답을 받지 못해 같은 저장을 다시 보내도 메모가 하나만 생긴다
+ * (이미 만든 메모를 그대로 돌려준다).
+ */
+export async function createNote(
+  userId: string,
+  teamId: string,
+  input: { rawText: unknown; allowExternalAi?: unknown; clientRequestId?: unknown },
+) {
   const rawText = text(input.rawText, "메모", { min: 1, max: MAX_RAW });
   const allowExternalAi = bool(input.allowExternalAi, "AI 정리 허용", true);
+  const clientRequestId =
+    input.clientRequestId === undefined || input.clientRequestId === null ? null : uuid(input.clientRequestId, "clientRequestId");
   return withTx(async (tx) => {
     await requireMembership(tx, userId, teamId);
     const n = await tx.query(
-      "insert into notes (team_id, author_id, allow_external_ai) values ($1, $2, $3) returning id",
-      [teamId, userId, allowExternalAi],
+      `insert into notes (team_id, author_id, allow_external_ai, client_request_id) values ($1, $2, $3, $4)
+       on conflict (author_id, client_request_id) where client_request_id is not null do nothing
+       returning id`,
+      [teamId, userId, allowExternalAi, clientRequestId],
     );
+    if (!n.rowCount) {
+      // 같은 저장 요청을 다시 보낸 것이다: 이미 만든 메모를 그대로 돌려준다 (다른 팀에 쓴 식별자면 받지 않는다)
+      const ex = await tx.query(
+        `select n.id, v.id as version_id, v.content_hash from notes n
+         join lateral (select * from note_versions nv where nv.note_id = n.id order by nv.version asc limit 1) v on true
+         where n.author_id = $1 and n.client_request_id = $2 and n.team_id = $3`,
+        [userId, clientRequestId, teamId],
+      );
+      if (!ex.rowCount) throw conflict("이미 처리한 저장 요청입니다. 새로 고친 뒤 다시 시도해 주세요.");
+      return { noteId: ex.rows[0].id as string, versionId: ex.rows[0].version_id as string, contentHash: ex.rows[0].content_hash as string };
+    }
     const noteId = n.rows[0].id as string;
     const v = await tx.query(
       `insert into note_versions (note_id, team_id, version, raw_text, content_hash)
@@ -283,9 +310,53 @@ export async function editNote(userId: string, noteId: string, rawTextInput: unk
   });
 }
 
+/**
+ * 공유한 정리를 고쳐서 바로 다시 공유한다 (철회된 것도). 새 버전 만들기 → 작성자 확정(원문 그대로) → 공유를
+ * 한 트랜잭션에서 한다. 따로 하면 중간에 실패했을 때 공유가 풀린 초안으로 남아 팀원 목록에서 사라진다.
+ * 이전 버전을 반영한 답변은 수정과 같은 규칙으로 무효화된다.
+ */
+export async function reviseAndShare(userId: string, noteId: string, rawTextInput: unknown) {
+  const rawText = text(rawTextInput, "메모", { min: 1, max: MAX_RAW });
+  return withTx(async (tx) => {
+    const note = await lockOwnMemo(tx, userId, noteId);
+    // 개인 메모(공유 전)는 이 경로로 공유하지 않는다: 반드시 '메모 보기'에서 골라 확정한 정리로만 공유
+    if (note.origin === "memo" && note.share_state === "draft") throw notFound();
+    const latest = await latestVersion(tx, noteId);
+    const v = await tx.query(
+      `insert into note_versions (note_id, team_id, version, raw_text, content_hash, intent_state, confirmed_by, confirmed_at,
+                                  search_text, index_state)
+       values ($1, $2, $3, $4, $5, 'raw_only', $6, now(), $4, 'ready') returning id`,
+      [noteId, note.team_id, latest.version + 1, rawText, contentHash(rawText, null), userId],
+    );
+    const versionId = v.rows[0].id as string;
+    const wasShared = note.share_state === "shared";
+    await tx.query("update notes set share_state = 'shared', current_version_id = $1, updated_at = now() where id = $2", [versionId, noteId]);
+    const invalidated = wasShared ? await invalidateAdviceForNote(tx, noteId) : 0;
+    await audit(tx, userId, "note.edit", noteId, { wasShared, invalidated });
+    await audit(tx, userId, "note.confirm", noteId, { versionId, choice: "raw_only" });
+    await audit(tx, userId, "note.share", noteId, { versionId });
+    return { noteId, versionId, shareState: "shared" as const };
+  });
+}
+
+/**
+ * 팀을 나가는 사람이 그 팀에 'AI만 참고'로 공유한 메모를 철회한다 (teams.ts leaveTeamInTx).
+ * 그 메모는 작성자만 보고 관리하는데, 작성자가 나가면 아무도 볼 수 없는 채로 AI 만 계속 참고하게 된다.
+ * 팀에 공개한 메모는 팀원이 볼 수 있으므로 사전 합의대로 남긴다. 다시 참여하면 철회한 메모를 다시 공유할 수 있다.
+ */
+export async function withdrawAiOnlyNotesOf(tx: Db, userId: string, teamId: string): Promise<number> {
+  const r = await tx.query(
+    `update notes set share_state = 'withdrawn', updated_at = now()
+     where team_id = $1 and author_id = $2 and visibility = 'ai_only' and share_state = 'shared' returning id`,
+    [teamId, userId],
+  );
+  for (const row of r.rows) await invalidateAdviceForNote(tx, row.id as string);
+  return r.rowCount ?? 0;
+}
+
 export async function withdrawNote(userId: string, noteId: string) {
   return withTx(async (tx) => {
-    const note = await lockOwnNote(tx, userId, noteId);
+    const note = await lockOwnNote(tx, userId, noteId, { allowAfterLeaving: true });
     if (note.share_state !== "shared") throw conflict("공유 중인 메모만 철회할 수 있습니다.");
     await tx.query("update notes set share_state = 'withdrawn', updated_at = now() where id = $1", [noteId]);
     const invalidated = await invalidateAdviceForNote(tx, noteId);
@@ -297,7 +368,7 @@ export async function withdrawNote(userId: string, noteId: string) {
 /** 삭제: 원문·버전을 지운다. 이 메모를 근거로 쓴 조언은 무효화된다. */
 export async function deleteNote(userId: string, noteId: string) {
   return withTx(async (tx) => {
-    await lockOwnNote(tx, userId, noteId);
+    await lockOwnNote(tx, userId, noteId, { allowAfterLeaving: true });
     const invalidated = await invalidateAdviceForNote(tx, noteId, "input");
     const purged = await purgeAdviceForNote(tx, noteId);
     await tx.query("delete from notes where id = $1", [noteId]);

@@ -8,5 +8,5 @@ export const GET = route<{ teamId: string }>(async (_req, p) =>
 export const POST = route<{ teamId: string }>(async (req, p) => {
   const userId = await currentUserId();
   const body = await readJson(req);
-  return createNote(userId, uuid(p.teamId, "teamId"), { rawText: body.rawText, allowExternalAi: body.allowExternalAi });
+  return createNote(userId, uuid(p.teamId, "teamId"), { rawText: body.rawText, allowExternalAi: body.allowExternalAi, clientRequestId: body.clientRequestId });
 });

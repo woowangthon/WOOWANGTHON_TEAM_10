@@ -4,7 +4,7 @@
 import { createHash, createHmac, randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { audit, getPool, withTx, type Db } from "./db.ts";
-import { AppError, badRequest, notFound, unauthorized } from "./errors.ts";
+import { AppError, badRequest, inviteNotFound, notFound, unauthorized } from "./errors.ts";
 import { text } from "./validate.ts";
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, keylen: number) => Promise<Buffer>;
@@ -125,7 +125,7 @@ export async function startWithTeam(input: { displayName: unknown; teamName?: un
     return await withTx(async (tx) => {
       // 초대 확인부터 계정·멤버십 생성까지 한 번에 성공하거나 전부 취소된다.
       const found = joining ? await tx.query("select id, name from teams where invite_code = $1 for share", [teamInput]) : null;
-      if (found && !found.rowCount) throw notFound();
+      if (found && !found.rowCount) throw inviteNotFound();
       if (prepared) await consumePreparedCode(tx, prepared, "signup");
       const u = await tx.query(
         "insert into users (display_name, login_code_hash) values ($1, $2) returning id",

@@ -18,6 +18,9 @@ export function MemoFab({ teamId, teams }: { teamId?: string; teams?: TeamOption
   const box = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  // 저장 요청 식별자. 응답을 받지 못해 같은 내용을 다시 저장해도 메모가 하나만 생기게 한다(서버가 같은 식별자를 한 번만 저장).
+  // 내용이나 대상 팀이 바뀌면 다른 저장이므로 새로 만든다.
+  const requestId = useRef<{ key: string; id: string } | null>(null);
 
   useEffect(() => {
     if (teamId) { setTarget(teamId); return; }
@@ -63,7 +66,10 @@ export function MemoFab({ teamId, teams }: { teamId?: string; teams?: TeamOption
     if (!text.trim() || busy || !target) return;
     setBusy(true); setError("");
     try {
-      await api(`/api/teams/${target}/memos`, { body: { text } });
+      const key = `${target}\n${text}`;
+      if (requestId.current?.key !== key) requestId.current = { key, id: crypto.randomUUID() };
+      await api(`/api/teams/${target}/memos`, { body: { text, clientRequestId: requestId.current.id } });
+      requestId.current = null;
       setText(""); setOpen(false); setSaved(target);
       window.dispatchEvent(new Event(MEMO_SAVED_EVENT));
     } catch (e) { setError((e as Error).message); }

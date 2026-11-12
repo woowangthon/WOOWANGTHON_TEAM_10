@@ -7,9 +7,15 @@ export function uuid(value: unknown, field: string): string {
   return value.toLowerCase();
 }
 
+const INPUT_STRIP = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]/g;
+
+/**
+ * 사용자 입력 문자열. 제어 문자(NUL 등)와 글자 방향 조작 문자를 지우고 앞뒤 공백을 뗀다. 줄바꿈과 탭은 남긴다.
+ * NUL 은 PostgreSQL 이 받지 않아 500 이 되고, 방향 조작 문자는 화면의 글자 순서를 속이는 데 쓰인다.
+ */
 export function text(value: unknown, field: string, { min = 0, max }: { min?: number; max: number }): string {
   if (typeof value !== "string") throw badRequest(`${field}는 문자열이어야 합니다.`);
-  const v = value.trim();
+  const v = value.replace(INPUT_STRIP, "").trim();
   if (v.length < min) throw badRequest(`${field}를 입력해 주세요.`);
   if (v.length > max) throw badRequest(`${field}는 ${max}자 이하여야 합니다.`);
   return v;

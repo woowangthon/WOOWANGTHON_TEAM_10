@@ -87,10 +87,14 @@ function Teams({ me }: { me: Me }) {
     setCode(""); setCompletedTeam({ id: team.id, name: team.name, created: false });
   });
   const leave = (t: Team) => {
-    if (!confirm(`'${t.name}' 팀에서 나갈까요? 나가면 이 팀의 자료를 볼 수 없습니다. 이미 공유한 메모는 팀에 남습니다.`)) return;
+    if (!confirm(`'${t.name}' 팀에서 나갈까요? 나가면 이 팀의 자료를 볼 수 없습니다. 팀에 공개한 메모는 팀에 남고, 'AI만 참고'로 공유한 메모는 철회됩니다.`)) return;
     act(async () => {
-      const r = await api<{ promoted: { displayName: string } | null }>(`/api/teams/${t.id}/leave`, { body: {} });
-      if (r.promoted) setNotice(`팀장 권한이 ${r.promoted.displayName}님에게 넘어갔습니다.`);
+      const r = await api<{ promoted: { displayName: string } | null; withdrawnAiOnly?: number }>(`/api/teams/${t.id}/leave`, { body: {} });
+      const notes = [
+        r.promoted ? `팀장 권한이 ${r.promoted.displayName}님에게 넘어갔습니다.` : "",
+        r.withdrawnAiOnly ? `'AI만 참고' 메모 ${r.withdrawnAiOnly}개를 철회했습니다.` : "",
+      ].filter(Boolean);
+      if (notes.length) setNotice(notes.join(" "));
     });
   };
   return (

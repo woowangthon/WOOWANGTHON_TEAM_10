@@ -5,7 +5,7 @@
 // "팀 메모에 있는 내용"으로만 보여준다. 연결 이유·활용 제안·반론은 만들지 않는다 (지어내지 않음).
 import { requireMembership } from "./access.ts";
 import { PROMPT_VERSION } from "./ai/prompts.ts";
-import { AiTimeout, aiTimeoutMs, withTimeout } from "./ai/timeout.ts";
+import { aiBudgetRemainingMs, AiTimeout, aiTimeoutMs, withAiBudget, withTimeout } from "./ai/timeout.ts";
 import type { AiProvider, CandidateForAi, DeclinedForAi, TaskContext } from "./ai/types.ts";
 import {
   InvalidAiOutput,
@@ -39,10 +39,15 @@ class AiCallError extends Error {
   }
 }
 
-/** 모델 호출 하나에 시간 제한을 건다. fn 은 받은 signal 을 제공자에 넘겨야 시간 초과 때 요청이 실제로 멈춘다. */
+/**
+ * 모델 호출 하나에 시간 제한을 건다. fn 은 받은 signal 을 제공자에 넘겨야 시간 초과 때 요청이 실제로 멈춘다.
+ * 요청 전체 시간(withAiBudget)이 걸려 있으면 남은 시간까지만 기다리고, 이미 다 썼으면 부르지 않는다.
+ */
 export async function callAi<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const ms = Math.min(aiTimeoutMs(), aiBudgetRemainingMs());
+  if (ms <= 0) throw new AiTimeout();
   try {
-    return await withTimeout(fn, aiTimeoutMs());
+    return await withTimeout(fn, ms);
   } catch (err) {
     if (err instanceof AiTimeout) throw err;
     throw new AiCallError(err);
@@ -312,7 +317,7 @@ export async function requestAdvice(
   provider.drainUsage?.(); // 이전 호출의 사용량이 섞이지 않게 비운다
 
   try {
-    const res = await runPipeline(userId, task, ctx, requestId, provider);
+    const res = await withAiBudget(() => runPipeline(userId, task, ctx, requestId, provider));
     await finalize(requestId, userId, task.team_id, task.id, task.version, res);
   } catch (err) {
     const code = errorCode(err);
