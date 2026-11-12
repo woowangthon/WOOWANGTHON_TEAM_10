@@ -1,5 +1,5 @@
 "use client";
-// 어느 화면에서든 위쪽 고정 막대에 있는 '메모하기' 버튼. 쓴 메모는 나만 보며, '메모 보기'에서 골라 정리해 공유한다.
+// 어느 화면에서든 옆 메뉴에 있는 '메모하기' 버튼. 쓴 메모는 나만 보며, '메모 보기'에서 골라 정리해 공유한다.
 import { useEffect, useId, useRef, useState } from "react";
 import { api } from "./api-client.ts";
 
