@@ -5,7 +5,7 @@
 //  - 이 사람이 쓴 메모·공유한 정리·철회해 둔 회의록 전부(모든 버전). 그 내용을 반영한 답변은 무효화하고 본문을 지운다
 //    (메모 하나를 삭제할 때와 같은 규칙: src/lib/notes.ts deleteNote)
 //  - 이 사람의 조언 요청·조언·반응 (요청한 사람에게만 보이는 개인 기록)
-//  - 활동 중인 팀원이 아무도 남지 않는 팀 (팀 전체 자료 포함)
+//  - 활동 중인 팀원이 아무도 남지 않는 팀 (팀 전체 자료 포함). 이 사람이 예전에 나간 팀도 포함한다
 // 남기는 것 (사용자 결정: 회의록은 팀 기록)
 //  - 팀에 공유 중인 회의록. 이 사람이 처음 썼으면 작성자를 비우고("탈퇴한 사용자"), 이 사람이 고친 버전은 고친 사람을 비운다.
 //    회의록 내용은 그대로 두고, AI 도 계속 참고한다.
@@ -40,6 +40,13 @@ export async function deleteAccount(userId: string, input: { password?: unknown;
       }
     }
 
+    // 예전에 나간 팀도 함께 본다: 혼자 쓰던 팀을 「나가기」한 뒤 탈퇴하면 그 팀은 아무도 볼 수 없는 채로 남는다.
+    // 참여·나가기와 꼬이지 않게 팀 행을 먼저 잠근다 (teams.ts 와 같은 잠금, 팀 ID 순서).
+    const mine = await tx.query(
+      `select t.id from teams t where t.id in (select team_id from memberships where user_id = $1) order by t.id for update`,
+      [userId],
+    );
+    const myTeams = mine.rows.map((x) => x.id as string);
     const teamsLeft = await leaveAllTeams(tx, userId);
     const notesDeleted = await deleteAllNotes(tx, userId);
 
@@ -53,7 +60,7 @@ export async function deleteAccount(userId: string, input: { password?: unknown;
       `delete from teams t where t.id = any($1::uuid[])
          and not exists (select 1 from memberships m where m.team_id = t.id and m.status = 'active' and m.user_id <> $2)
        returning t.id`,
-      [teamsLeft, userId],
+      [myTeams, userId],
     );
 
     await tx.query("delete from users where id = $1", [userId]);

@@ -4,7 +4,8 @@ import { currentUserId, rateLimit, readJson, route } from "../../../../../lib/ht
 import { uuid } from "../../../../../lib/validate.ts";
 
 type P = { taskId: string };
-// 모델 호출 1회. 느린 응답에 대비해 함수 시간 제한을 늘린다.
+// 모델을 최대 3번(요약 + 답변 + 다시 쓰기) 부른다. 호출 전체가 50초 안에 끝나도록 제한하므로(src/lib/ai/timeout.ts)
+// 함수 시간 제한 60초 안에 실패까지 기록할 수 있다.
 export const maxDuration = 60;
 
 export const GET = route<P>(async (_req, p) => listChat(await currentUserId(), uuid(p.taskId, "taskId")));

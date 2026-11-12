@@ -10,5 +10,5 @@ export const GET = route<P>(async (_req, p) => listMemos(await currentUserId(), 
 export const POST = route<P>(async (req, p) => {
   const userId = await currentUserId();
   const body = await readJson(req);
-  return createNote(userId, uuid(p.teamId, "teamId"), { rawText: body.text, allowExternalAi: true });
+  return createNote(userId, uuid(p.teamId, "teamId"), { rawText: body.text, allowExternalAi: true, clientRequestId: body.clientRequestId });
 });

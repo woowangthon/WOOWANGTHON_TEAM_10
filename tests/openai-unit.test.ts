@@ -107,16 +107,17 @@ describe("OpenAI 제공자", () => {
     expect(p.name).toBe("openai");
     expect(p.isAi).toBe(true);
     expect(describeProvider({ AI_PROVIDER: "openai" })).toMatchObject({ provider: "openai", available: true, model: "gpt-6.1-terra", reasoningEffort: "none" });
-    // 같은 설정이면 같은 인스턴스, 설정이 바뀌면 새 인스턴스
-    expect(getProvider({ AI_PROVIDER: "openai" })).toBe(getProvider({ AI_PROVIDER: "openai" }));
+    // 요청마다 새 인스턴스: 사용량 기록이 동시 요청끼리 섞이지 않게 (docs/보안_점검.md §22)
+    expect(getProvider({ AI_PROVIDER: "openai" })).not.toBe(getProvider({ AI_PROVIDER: "openai" }));
     expect(getProvider({ AI_PROVIDER: "openai", OPENAI_MODEL: "gpt-6.1-sol" })).not.toBe(p);
   });
 
-  it("시작 검사: openai 인데 키가 없으면 경고(치명 아님), 키가 있는데 제공자가 아니면 경고", () => {
+  it("시작 검사: openai 인데 키가 없으면 운영에서는 치명·개발에서는 경고, 키가 있는데 제공자가 아니면 경고", () => {
     const base = { DATABASE_URL: "postgres://x", SESSION_SECRET: "k".repeat(40), NODE_ENV: "production" };
     const a = checkEnvironment({ ...base, AI_PROVIDER: "openai" });
-    expect(a.every((p) => !p.fatal)).toBe(true);
+    expect(a.some((p) => p.fatal)).toBe(true); // 운영: 서버는 뜨는데 모든 AI 호출이 실패하는 상태를 막는다
     expect(a.map((p) => p.message).join()).toContain("OPENAI_API_KEY");
+    expect(checkEnvironment({ ...base, NODE_ENV: "development", AI_PROVIDER: "openai" }).every((p) => !p.fatal)).toBe(true);
     expect(checkEnvironment({ ...base, AI_PROVIDER: "openai", OPENAI_API_KEY: "sk" })).toEqual([]);
     expect(checkEnvironment({ ...base, AI_PROVIDER: "openai", OPENAI_API_KEY: "sk", OPENAI_REASONING_EFFORT: "ultra" })[0]!.fatal).toBe(false);
     expect(checkEnvironment({ ...base, OPENAI_API_KEY: "sk" })[0]!.message).toContain("쓰이지 않습니다");
