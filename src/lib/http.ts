@@ -22,7 +22,8 @@ function assertSameOrigin(req: Request) {
   if (req.method === "GET" || req.method === "HEAD") return;
   const origin = req.headers.get("origin");
   const host = req.headers.get("host");
-  if (!origin || !host || new URL(origin).host !== host) throw forbidden();
+  // Origin 이 주소 형식이 아니면(샌드박스 문서의 "null" 등) 다른 출처로 본다: 500 이 아니라 403
+  if (!origin || !host || !URL.canParse(origin) || new URL(origin).host !== host) throw forbidden();
   if (!req.headers.get("content-type")?.startsWith("application/json") && req.method !== "DELETE") {
     throw badRequest("JSON 요청만 받습니다.");
   }

@@ -20,8 +20,11 @@ const HISTORY_LIMIT = 30;
 const GONE = "탈퇴한 사용자";
 
 function meetingDate(value: unknown): string {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`)))
-    throw badRequest("회의 날짜 형식이 올바르지 않습니다 (예: 2026-11-07).");
+  const bad = () => badRequest("회의 날짜 형식이 올바르지 않습니다 (예: 2026-11-07).");
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw bad();
+  // 2026-02-30 처럼 달력에 없는 날짜는 JS 가 다음 달로 넘겨 받아들인다. 되돌린 값이 같을 때만 받는다(아니면 DB 가 500 을 낸다)
+  const t = Date.parse(`${value}T00:00:00Z`);
+  if (Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== value) throw bad();
   return value;
 }
 

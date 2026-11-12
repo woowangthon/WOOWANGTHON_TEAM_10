@@ -168,7 +168,8 @@ export async function shareSummary(
 export async function reviseShared(userId: string, noteId: string, input: { text: unknown }) {
   // 개인 메모(공유 전)는 이 경로로 공유하지 않는다: 반드시 '메모 보기'에서 골라 확정한 정리로만 공유
   const n = await getPool().query("select origin, share_state from notes where id = $1 and author_id = $2", [noteId, userId]);
-  if (!n.rowCount || (n.rows[0].origin === "memo" && n.rows[0].share_state === "draft")) throw notFound();
+  // 회의록도 이 경로로 고치지 않는다(회의록 API 로만): 제목·날짜 없는 버전이 생긴다
+  if (!n.rowCount || n.rows[0].origin === "meeting" || (n.rows[0].origin === "memo" && n.rows[0].share_state === "draft")) throw notFound();
   const edited = await editNote(userId, noteId, input.text);
   const c = await confirmVersion(userId, noteId, edited.versionId, { choice: "raw_only", expectedHash: edited.contentHash });
   if (c.intentState !== "raw_only") throw conflict("다시 시도해 주세요.");

@@ -169,7 +169,9 @@ async function memoryFor(task: TaskRow, userId: string, cutoff: string | null, p
     );
     const summary = raw && typeof raw === "object" ? (raw as Record<string, unknown>).summary : undefined;
     if (typeof summary !== "string" || !summary.trim()) return kept;
-    const ids = [...new Set([...(mem?.input_version_ids ?? []), ...older.rows.flatMap((t) => t.input_version_ids as string[])])];
+    // 답변까지 접어 넣은 턴의 지식만 기록한다. 질문만 넣은 턴(지식이 바뀐 턴)의 지식은 요약에 들어가지 않았다.
+    // 그것까지 기록하면 요약이 만들자마자 '무효'가 되어 질문마다 버려지고, 요약을 물려받은 새 답변도 대화에서 빠진다.
+    const ids = [...new Set([...(mem?.input_version_ids ?? []), ...older.rows.filter((t) => t.inputs_live).flatMap((t) => t.input_version_ids as string[])])];
     const last = older.rows[older.rows.length - 1].at_text as string;
     await db.query(
       `insert into chat_memories (task_id, user_id, summary, covered_until, input_version_ids, updated_at)

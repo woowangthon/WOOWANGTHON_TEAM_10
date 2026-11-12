@@ -75,6 +75,16 @@ async function lockOwnNote(tx: pg.PoolClient, userId: string, noteId: string) {
   return note;
 }
 
+/**
+ * 내용을 바꾸는 메모 경로(수정·정리 붙이기·확정)용. 회의록은 회의록 API(meetings.ts)로만 고친다:
+ * 메모 경로로 고치면 제목·날짜 없는 버전이 생기고 공유가 내려가 팀원 목록에서 사라진다.
+ */
+async function lockOwnMemo(tx: pg.PoolClient, userId: string, noteId: string) {
+  const note = await lockOwnNote(tx, userId, noteId);
+  if (note.origin === "meeting") throw notFound();
+  return note;
+}
+
 async function getVersionOf(tx: Db, noteId: string, versionId: string) {
   const r = await tx.query("select * from note_versions where id = $1 and note_id = $2", [versionId, noteId]);
   if (!r.rowCount) throw notFound();
@@ -165,7 +175,7 @@ export async function setRestatement(
 ) {
   const restated = parseRestated(restatedInput);
   return withTx(async (tx) => {
-    const note = await lockOwnNote(tx, userId, noteId);
+    const note = await lockOwnMemo(tx, userId, noteId);
     if (!note.allow_external_ai) throw conflict("이 메모는 AI 정리를 허용하지 않았습니다.");
     const version = await getVersionOf(tx, noteId, versionId);
     if (opts.expectedHash !== undefined && version.content_hash !== opts.expectedHash)
@@ -199,7 +209,7 @@ export async function confirmVersion(
   if (typeof input.expectedHash !== "string") throw badRequest("확인할 내용의 해시가 필요합니다.");
 
   return withTx(async (tx) => {
-    await lockOwnNote(tx, userId, noteId);
+    await lockOwnMemo(tx, userId, noteId);
     const version = await getVersionOf(tx, noteId, versionId);
     const latest = await latestVersion(tx, noteId);
     if (latest.id !== version.id) throw conflict("최신 버전만 확인할 수 있습니다.");
@@ -254,7 +264,7 @@ export async function shareNote(userId: string, noteId: string, versionId: strin
 export async function editNote(userId: string, noteId: string, rawTextInput: unknown) {
   const rawText = text(rawTextInput, "메모", { min: 1, max: MAX_RAW });
   return withTx(async (tx) => {
-    const note = await lockOwnNote(tx, userId, noteId);
+    const note = await lockOwnMemo(tx, userId, noteId);
     const latest = await latestVersion(tx, noteId);
     const v = await tx.query(
       `insert into note_versions (note_id, team_id, version, raw_text, content_hash)
