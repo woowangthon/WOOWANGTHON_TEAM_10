@@ -39,7 +39,7 @@ describe("지식이 바뀐 뒤의 대화 기억", () => {
       const rec = recording(plain());
       await askInProject(s.bob, s.projectId, { question: `후 ${i}` }, rec.provider);
       recaps += rec.calls.recap.length;
-      answered.push(rec.calls.chat[0]!.history.filter((t) => t.answer).length);
+      answered.push(rec.calls.chat[0]!.history.slice(-6).filter((t) => t.answer).length); // 최근 6턴 기준
     }
     // 철회 뒤의 답변은 철회된 지식을 받지 않았으므로 한 턴씩 대화에 돌아온다
     expect(answered.slice(0, 7)).toEqual([0, 1, 2, 3, 4, 5, 6]);
@@ -53,6 +53,41 @@ describe("지식이 바뀐 뒤의 대화 기억", () => {
        join note_versions v on v.id = e.id join notes n on n.id = v.note_id`,
     );
     expect(m.rows[0].live).toBe(true);
+  });
+});
+
+describe("최근 대화와 요약 사이의 공백", () => {
+  it("최근 6턴에서 밀려났지만 아직 요약되지 않은 턴도 모델에 넘긴다", async () => {
+    const s = await setup();
+    for (let i = 1; i <= 8; i++) await askInProject(s.bob, s.projectId, { question: `질문 ${i}` }, plain()); // 8번째에서 1번 턴을 요약
+    const seen: string[][] = [];
+    const recaps: number[] = [];
+    for (let i = 9; i <= 11; i++) {
+      const rec = recording(plain());
+      await askInProject(s.bob, s.projectId, { question: `질문 ${i}` }, rec.provider);
+      seen.push(rec.calls.chat[0]!.history.map((t) => `${t.question}${t.answer ? "" : "(답 없음)"}`));
+      recaps.push(rec.calls.recap.length);
+    }
+    const q = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, k) => `질문 ${from + k}`);
+    expect(seen[0]).toEqual(q(2, 8)); // 2번 턴: 요약에도 최근 6턴에도 없던 턴
+    expect(seen[1]).toEqual(q(2, 9));
+    expect(seen[2]).toEqual(q(5, 10)); // 3턴이 쌓여 요약에 접어 넣었으므로 최근 6턴만
+    expect(recaps).toEqual([0, 0, 1]);
+  });
+
+  it("그 턴이 받았던 지식이 철회되면 답변 없이 질문만 넘긴다", async () => {
+    const s = await setup();
+    for (let i = 1; i <= 8; i++) await askInProject(s.bob, s.projectId, { question: `질문 ${i}` }, plain());
+    const memo = await shareSummary(s.alice, s.teamId, { text: "슬라이드는 5장 이내" });
+    for (let i = 9; i <= 15; i++) await askInProject(s.bob, s.projectId, { question: `질문 ${i}` }, plain());
+    await withdrawNote(s.alice, memo.noteId);
+    // 16번째 질문: 최근 6턴은 10~15, 아직 요약되지 않은 턴은 8(메모가 생기기 전)·9(메모를 받은 턴)
+    const rec = recording(plain());
+    await askInProject(s.bob, s.projectId, { question: "질문 16" }, rec.provider);
+    const h = rec.calls.chat[0]!.history;
+    expect(h.map((t) => t.question).slice(0, 2)).toEqual(["질문 8", "질문 9"]);
+    expect(h[0]!.answer).toBeTruthy();
+    expect(h.slice(1).every((t) => t.answer === null)).toBe(true);
   });
 });
 

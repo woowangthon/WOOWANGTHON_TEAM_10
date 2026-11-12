@@ -39,6 +39,8 @@ const MEMORY_FOLD_AT = 3;
 /** 기억을 처음부터 다시 만들 때 접어 넣을 최대 턴 수 */
 const MEMORY_REBUILD_TURNS = 40;
 const MAX_MEMORY = 4000;
+/** 최근 대화에서 밀려났지만 아직 요약되지 않아 그대로 넘기는 턴의 최대 수 (평소에는 MEMORY_FOLD_AT - 1 개까지 생긴다) */
+const MAX_PENDING_TURNS = MEMORY_FOLD_AT - 1;
 
 type KnowledgeKind = "memo" | "meeting" | "private";
 const kindOf = (c: Candidate): KnowledgeKind => (c.origin === "meeting" ? "meeting" : c.aiOnly ? "private" : "memo");
@@ -123,11 +125,14 @@ const LIVE_INPUTS = `coalesce((select bool_and(coalesce(n.current_version_id = v
  * - 요약에 접어 넣은 턴이 받았던 지식이 하나라도 지금 쓸 수 없으면(철회·수정·삭제·AI 참고 해제) 요약을 버리고 다시 만든다.
  *   그 지식이 넘어간 턴은 답변 없이 질문만 접어 넣는다. 지식을 지우면 notes.ts 가 해당 요약을 바로 지운다.
  * - 요약에 실패해도 대화는 막지 않는다(있던 요약을 그대로 쓰거나 없이 답함).
+ * - 밀려났지만 아직 요약에 접어 넣지 않은 턴(MEMORY_FOLD_AT 개가 쌓이기 전, 또는 요약 실패)은 pending 으로 돌려준다.
+ *   호출자가 최근 대화 앞에 붙여 넘긴다. 그러지 않으면 그 턴들은 요약에도 최근 대화에도 없어 모델이 잠시 잊는다.
  */
 type Memory = { summary: string; ids: string[] } | null;
+type Recall = { memory: Memory; pending: ChatInput["history"]; pendingIds: string[] };
 
-async function memoryFor(task: TaskRow, userId: string, cutoff: string | null, provider: AiProvider): Promise<Memory> {
-  if (!cutoff) return null; // 최근 대화보다 오래된 대화가 없음
+async function memoryFor(task: TaskRow, userId: string, cutoff: string | null, provider: AiProvider): Promise<Recall> {
+  if (!cutoff) return { memory: null, pending: [], pendingIds: [] }; // 최근 대화보다 오래된 대화가 없음
   const db = getPool();
   const m = await db.query(
     `select m.summary, m.covered_until::text as covered_until,
@@ -155,7 +160,14 @@ async function memoryFor(task: TaskRow, userId: string, cutoff: string | null, p
      order by created_at asc`,
     [task.id, userId, cutoff, mem?.covered_until ?? null, MEMORY_REBUILD_TURNS],
   );
-  const kept: Memory = mem ? { summary: mem.summary, ids: mem.input_version_ids } : null;
+  // 요약하지 못한 턴은 가장 최근 것부터 정해진 수만 그대로 넘긴다(요약이 계속 실패해도 입력이 끝없이 늘지 않게).
+  // 답변을 넘기는 턴의 지식은 최근 대화와 같은 규칙으로 이번 요청의 입력 기록에 물려받는다(historyFor).
+  const tail = older.rows.slice(-MAX_PENDING_TURNS);
+  const kept: Recall = {
+    memory: mem ? { summary: mem.summary, ids: mem.input_version_ids } : null,
+    pending: tail.map((t) => ({ question: t.question as string, answer: t.inputs_live ? clip(t.body as string, 1500) : null })),
+    pendingIds: tail.filter((t) => t.inputs_live).flatMap((t) => t.input_version_ids as string[]),
+  };
   if (older.rowCount! < (mem ? MEMORY_FOLD_AT : 1)) return kept;
   try {
     const raw = await callAi((signal) =>
@@ -180,7 +192,7 @@ async function memoryFor(task: TaskRow, userId: string, cutoff: string | null, p
          input_version_ids = excluded.input_version_ids, updated_at = now()`,
       [task.id, userId, summary.trim().slice(0, MAX_MEMORY), last, ids],
     );
-    return { summary: summary.trim().slice(0, MAX_MEMORY), ids };
+    return { memory: { summary: summary.trim().slice(0, MAX_MEMORY), ids }, pending: [], pendingIds: [] };
   } catch (err) {
     console.error("chat memory failed", (err as Error)?.name);
     return kept;
@@ -193,9 +205,13 @@ async function answer(userId: string, task: TaskRow, requestId: string, question
   provider.drainUsage?.();
   try {
     const project = projectOf(task);
-    const { turns: history, cutoff, inherited } = await historyFor(task.id, userId, createdAt);
+    const recent = await historyFor(task.id, userId, createdAt);
     // 대화 기억은 새 질문에만 쓴다(예전 답변을 다시 쓸 때는 그 시점 이후의 대화가 섞이지 않게)
-    const memory = createdAt ? null : await memoryFor(task, userId, cutoff, provider);
+    const recall = createdAt ? null : await memoryFor(task, userId, recent.cutoff, provider);
+    const memory = recall?.memory ?? null;
+    // 아직 요약되지 않은 턴은 최근 대화 앞에 붙인다(시간 순서 유지)
+    const history = [...(recall?.pending ?? []), ...recent.turns];
+    const inherited = [...(recall?.pendingIds ?? []), ...recent.inherited];
     // 검색어는 앞에서부터 정해진 개수만 쓰므로(keywords.ts) 현재 질문을 맨 앞에, 그다음 최근 질문, 프로젝트 정보 순으로 둔다.
     // 프로젝트 설명이나 이전 질문이 길어도 지금 묻는 말의 검색어가 잘려 나가지 않게 하기 위해서다.
     const query = [question, ...history.map((h) => h.question).reverse(), project.title, project.purpose, project.audience, project.constraints]
