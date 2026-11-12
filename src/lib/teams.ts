@@ -17,18 +17,29 @@ export async function createTeam(userId: string, nameInput: unknown) {
   });
 }
 
+/**
+ * 초대 코드로 참여한다.
+ *  - 이미 팀원이면 아무것도 바꾸지 않는다 (참여 시각이 바뀌면 팀장 승계 순서가 바뀐다).
+ *  - 나갔다 돌아오는 사람은 예전 역할과 관계없이 팀원으로 시작한다 (나갈 때 넘긴 팀장 권한이 되살아나지 않게).
+ *  - 팀장이 없는 팀(모두 나간 팀)이면 들어오는 사람이 팀장이 된다 (팀장 없는 팀이 생기지 않게).
+ */
 export async function joinTeam(userId: string, codeInput: unknown) {
   const code = text(codeInput, "초대 코드", { min: 1, max: 64 });
   return withTx(async (tx) => {
-    const t = await tx.query("select id, name from teams where invite_code = $1", [code]);
+    // 동시 참여·나가기와 꼬이지 않게 팀 행을 잠근다 (leaveTeamInTx 와 같은 잠금)
+    const t = await tx.query("select id, name from teams where invite_code = $1 for update", [code]);
     if (!t.rowCount) throw notFound();
     const team = t.rows[0];
+    const me = await tx.query("select status from memberships where team_id = $1 and user_id = $2", [team.id, userId]);
+    if (me.rows[0]?.status === "active") return { id: team.id as string, name: team.name as string };
+    const lead = await tx.query("select 1 from memberships where team_id = $1 and status = 'active' and role = 'lead' limit 1", [team.id]);
+    const role = lead.rowCount ? "member" : "lead";
     await tx.query(
-      `insert into memberships (team_id, user_id) values ($1, $2)
-       on conflict (team_id, user_id) do update set status = 'active', joined_at = now()`,
-      [team.id, userId],
+      `insert into memberships (team_id, user_id, role) values ($1, $2, $3)
+       on conflict (team_id, user_id) do update set status = 'active', joined_at = now(), role = excluded.role`,
+      [team.id, userId, role],
     );
-    await audit(tx, userId, "team.join", team.id);
+    await audit(tx, userId, "team.join", team.id, { role });
     return { id: team.id as string, name: team.name as string };
   });
 }
