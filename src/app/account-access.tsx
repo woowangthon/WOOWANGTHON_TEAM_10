@@ -27,7 +27,7 @@ function CodeReceipt({ code, onContinue, label, busy, failure, onBack, onRecover
   const download = () => {
     const blob = new Blob([`넌지시 — 개인 로그인 코드\n\n${code}\n\n접속 주소: ${location.origin}\n이 코드는 내 계정을 여는 열쇠입니다. 팀원에게 공유하지 마세요.\n팀 초대 코드와 다릅니다. 분실하면 이메일로 복구할 수 없습니다.\n`], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a"); anchor.href = url; anchor.download = "팀기억-개인로그인코드.txt"; anchor.click();
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = "넌지시-개인로그인코드.txt"; anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     setNotice("코드 파일 저장을 요청했습니다. 내려받은 파일을 확인해 주세요.");
   };
@@ -86,13 +86,13 @@ export function Login({ onDone }: { onDone: () => void }) {
   return <main className="account-layout">
     <aside className="account-sidebar">
       <div className="sidebar-brand">넌지시</div>
-      <div className="account-intro"><p>팀이 남긴 생각을<br />다음 작업으로 이어 갑니다.</p><ol><li>떠오른 생각을 내 메모에 남깁니다.</li><li>팀과 나눌 내용을 확인해 공유합니다.</li><li>프로젝트에서 질문하면 AI가 참고합니다.</li></ol></div>
+      <div className="account-intro"><p>말하지 못한 생각을<br />팀의 작업으로 이어 갑니다.</p><ol><li>떠오른 생각을 내 메모에 남깁니다.</li><li>팀에 보일지, AI만 참고할지 정합니다.</li><li>팀원이 질문하면 AI가 참고해 답합니다.</li></ol></div>
     </aside>
     <section className="account-content">
       {prepared ? <CodeReceipt code={prepared.loginCode} label={teamAction === "create" ? "보관한 코드로 팀 만들기" : "팀에 참여하고 시작하기"} busy={busy} failure={failure} onContinue={finishStart} onRecover={recoverStart} onBack={() => { setPrepared(null); setError(""); setFailure(null); }} /> : <div className="auth-form">
         <p className="document-meta">넌지시</p>
-        <h1>함께 쌓아 가는 팀의 기록</h1>
-        <p className="account-help">메모와 회의록을 남기고, 프로젝트에서 질문하세요.</p>
+        <h1>말하지 못한 의견도, 팀의 AI가 넌지시 전합니다</h1>
+        <p className="account-help">떠오른 생각을 메모로 남기면, 팀원이 프로젝트에서 물을 때 AI가 참고해 답합니다.</p>
         <div className="auth-tabs" aria-label="시작 방법">
           <button type="button" className={mode === "start" ? "on" : ""} aria-pressed={mode === "start"} disabled={busy} onClick={() => { setMode("start"); setError(""); }}>처음 시작하기</button>
           <button type="button" className={mode === "login" ? "on" : ""} aria-pressed={mode === "login"} disabled={busy} onClick={() => { setMode("login"); setError(""); }}>다시 들어가기</button>

@@ -1461,6 +1461,8 @@ mark {
     top: 0;
     height: 100dvh;
     overflow-y: auto;
+    /* 옆 메뉴 안에 그려지는 메모 창·알림이 뒤따르는 고정 영역(가운데 목록, 질문 입력란)에 가려지지 않게 한다 */
+    z-index: 50;
   }
   .workspace-list {
     position: sticky;
