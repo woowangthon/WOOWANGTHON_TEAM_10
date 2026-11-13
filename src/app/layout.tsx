@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import "./globals.css";
 
-export const metadata = { title: "팀 기억 조언자", description: "팀의 메모를 참고하는 프로젝트 AI 대화" };
+export const metadata = { title: "넌지시", description: "말하지 못한 의견을 팀의 AI가 넌지시 전해 주는 프로젝트 대화" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
