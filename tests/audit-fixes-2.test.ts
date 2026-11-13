@@ -219,6 +219,38 @@ describe("운영 설정과 사용량", () => {
     expect(checkEnvironment({ ...base, NODE_ENV: "production", OPENAI_API_KEY: "sk" })).toEqual([]);
   });
 
+  it("동시에 온 두 질문의 사용량: 제공자를 함께 쓰면 한쪽에 몰리고, 요청마다 따로 만들면 각자 기록된다", async () => {
+    const { OpenAiProvider } = await import("../src/lib/ai/openai.ts");
+    const s = await setup();
+    // 두 요청의 모델 응답이 같은 순간에 끝나게 한다: 둘 다 모델을 부를 때까지 기다렸다가 함께 응답한다
+    const gatedFetch = () => {
+      const waiting: (() => void)[] = [];
+      return (async () => {
+        await new Promise<void>((resolve) => { waiting.push(resolve); if (waiting.length === 2) waiting.forEach((go) => go()); });
+        const body = { model: "gpt-test", status: "completed", usage: { input_tokens: 100, output_tokens: 10 },
+          output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: JSON.stringify({ answer: "답변입니다", used_refs: [] }) }] }] };
+        return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+      }) as unknown as typeof fetch;
+    };
+    const ask = async (tag: string, pa: AiProvider, pb: AiProvider) => {
+      await Promise.all([
+        askInProject(s.alice, s.projectId, { question: `${tag} 질문 A` }, pa),
+        askInProject(s.bob, s.projectId, { question: `${tag} 질문 B` }, pb),
+      ]);
+      const r = await getPool().query(
+        "select jsonb_array_length(coalesce(usage->'calls', '[]'::jsonb)) as calls from advice_requests where question like $1 order by question", [`${tag}%`]);
+      return r.rows.map((x) => x.calls as number);
+    };
+    // 예전 방식(제공자 하나를 함께 씀): 먼저 기록하는 쪽이 두 호출을 모두 가져가고 다른 쪽은 0 이 된다
+    const fetchShared = gatedFetch();
+    const shared = new OpenAiProvider({ apiKey: "sk-test", fetchImpl: fetchShared });
+    expect((await ask("공유", shared, shared)).sort()).toEqual([0, 2]);
+    // 지금 방식(요청마다 따로): 각자 1회
+    const fetchSeparate = gatedFetch();
+    const separate = () => new OpenAiProvider({ apiKey: "sk-test", fetchImpl: fetchSeparate });
+    expect(await ask("분리", separate(), separate())).toEqual([1, 1]);
+  });
+
   it("OpenAI 제공자는 요청마다 따로 만든다 (동시 요청의 사용량 기록이 섞이지 않게)", () => {
     const a = getProvider({ AI_PROVIDER: "openai" });
     const b = getProvider({ AI_PROVIDER: "openai" });
