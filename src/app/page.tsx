@@ -30,10 +30,10 @@ export default function Home() {
 function AccountUnavailable({ onRetry }: { onRetry: () => void }) {
   return (
     <main className="account-layout">
-      <aside className="account-sidebar"><div className="sidebar-brand">팀 기억 조언자</div></aside>
+      <aside className="account-sidebar"><div className="sidebar-brand">넌지시</div></aside>
       <section className="account-content">
         <div className="auth-form">
-          <p className="document-meta">팀 기억 조언자</p>
+          <p className="document-meta">넌지시</p>
           <h1>지금은 계정 정보를 불러올 수 없습니다</h1>
           <p className="error" role="alert">서버나 연결에 일시적인 문제가 있습니다. 잠시 후 다시 시도해 주세요.</p>
           <p className="account-help">로그인 상태와 기록은 그대로일 수 있습니다. 이미 계정이 있다면 새로 시작하지 말고 기다려 주세요.</p>
@@ -100,7 +100,7 @@ function Teams({ me }: { me: Me }) {
   return (
     <main className="workspace home-workspace">
       <aside className="workspace-sidebar">
-        <div className="sidebar-brand">팀 기억 조언자</div>
+        <div className="sidebar-brand">넌지시</div>
         <nav className="sidebar-nav" aria-label="계정 메뉴"><a href="#team-list" aria-current="page">내 팀</a><a href="#create-team">새 팀 만들기</a><a href="#join-team">초대 코드로 참여</a><a href="#account-settings">계정</a></nav>
         <MemoFab teams={(teams ?? []).map((t) => ({ id: t.id, name: t.name }))} />
         <div className="sidebar-account"><p>{me.displayName}</p><ThemeToggle /><button className="small" onClick={() => { if (me.authMethod === "code" && !confirm("개인 로그인 코드를 보관했나요? 다시 들어올 때 필요합니다.")) return; api("/api/auth/logout", { body: {} }).then(() => location.reload()); }}>로그아웃</button></div>

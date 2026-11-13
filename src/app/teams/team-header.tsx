@@ -68,7 +68,7 @@ export function TeamHeader({ teamId, active, onLoaded }: { teamId: string; activ
 
   return (
     <header className="team-head workspace-sidebar">
-      <a className="sidebar-brand" href="/">팀 기억 조언자</a>
+      <a className="sidebar-brand" href="/">넌지시</a>
       <div className="sidebar-team"><span className="sidebar-label">현재 팀</span><h1>{team?.name ?? "불러오는 중…"}</h1><a className="sidebar-back" href="/">모든 팀 보기</a></div>
       <div className="sidebar-compose"><MemoFab teamId={teamId} />{team?.myRole === "lead" && <button className="invite-trigger" type="button" onClick={openInvite}>팀원 초대</button>}</div>
       <nav className="tabs" aria-label="팀 메뉴">
