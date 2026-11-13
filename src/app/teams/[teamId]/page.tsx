@@ -264,7 +264,7 @@ function Chat({ project, aiReady, aiStatus }: { project: Project; aiReady: boole
             <h2>첫 질문</h2>
             <p className="muted">프로젝트에 대해 물어보세요. 질문과 답변은 나에게만 보입니다.</p>
             <div className="question-suggestions" aria-label="예시 질문">
-              {["발표 첫 장은 어떻게 시작하면 좋을까?", "두 실험 결과를 한 그래프로 비교하려면?", "마감까지 남은 일을 정리해 줘"].map((example) => (
+              {["발표 준비할 때 놓치기 쉬운 점이 있을까?", "일정을 정할 때 고려할 점이 있을까?", "마감까지 남은 일을 정리해 줘"].map((example) => (
                 <button type="button" className="question-example" key={example} disabled={!aiReady}
                   onClick={() => { setQuestion(example); questionBox.current?.focus(); }}><span>{example}</span><span className="example-arrow" aria-hidden="true">↗</span></button>
               ))}
