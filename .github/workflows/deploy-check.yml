@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://mijuk00.vercel.app' }}
+      PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://neonjisiai.vercel.app' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
