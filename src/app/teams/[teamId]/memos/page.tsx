@@ -197,7 +197,7 @@ export default function MemosPage({ params }: { params: Promise<{ teamId: string
             <details className="ev"><summary>바탕이 된 내 메모</summary>{rawMemos.filter((m) => draft.sources.includes(m.id)).map((m) => <blockquote key={m.id}>{m.text}</blockquote>)}</details>
             <h2>공개 범위</h2><div className="share-choice">
               <div><h3>팀에 공유</h3><p className="muted">팀원이 내용을 볼 수 있습니다.{draft.allowAi ? " AI도 대화할 때 참고할 수 있습니다." : " AI는 참고하지 않습니다."}</p><label className="check memo-ai"><input type="checkbox" checked={draft.allowAi} disabled={!!busy} onChange={(e) => setDraft({ ...draft, allowAi: e.target.checked })} />AI도 참고하도록 허용</label><button className="primary" disabled={!draft.text.trim() || !!busy} onClick={() => share("team")}>{busy === "share-team" ? "공유 중…" : "팀에 공유"}</button></div>
-              <div><h3>AI만 참고</h3><p className="muted">원문·출처는 팀원에게 표시되지 않지만, 일정·장소 등 필요한 내용은 답변에 반영될 수 있습니다. 팀원이 알면 안 되는 비밀은 적지 마세요.</p><button disabled={!draft.text.trim() || !!busy} onClick={() => share("ai_only")}>{busy === "share-ai_only" ? "저장 중…" : "AI만 참고로 저장"}</button></div>
+              <div><h3>AI만 참고</h3><p className="muted">원문·출처는 팀원에게 표시되지 않습니다. 다른 팀원이 물으면 AI는 원문 대신 요점만 참고합니다: 정해진 일정·장소는 답변에 전해질 수 있고, 바람이나 걱정은 추천할 때 고려하는 기준으로만 쓰입니다. 팀원이 알면 안 되는 비밀은 적지 마세요.</p><button disabled={!draft.text.trim() || !!busy} onClick={() => share("ai_only")}>{busy === "share-ai_only" ? "저장 중…" : "AI만 참고로 저장"}</button></div>
             </div>
             <div className="row document-actions">{draft.viaAi && <button disabled={!!busy} onClick={summarize}>다시 정리</button>}<button disabled={!!busy} onClick={() => setDraft(null)}>취소</button></div>
           </div>
