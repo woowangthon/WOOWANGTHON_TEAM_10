@@ -38,14 +38,19 @@ describe("'AI만 참고' 공유", () => {
     expect((await getNote(s.alice, s.hidden.noteId)).versions[0]!.raw_text).toBe(SECRET);
   });
 
-  it("AI 는 대화할 때 참고한다 (팀원에게 보이지 않는다는 표시와 함께, 작성자 정보 없이)", async () => {
+  it("AI 는 대화할 때 참고한다 (다른 팀원에게는 원문 대신 전달용 정리로, 작성자 정보 없이)", async () => {
     const s = await setup();
-    const rec = recording(new FakeProvider({ chat: (i) => ({ answer: "리허설은 금요일 저녁에 하세요.", used_refs: i.knowledge.map((k) => k.ref) }) }));
+    const rec = recording(new FakeProvider({
+      relay: (i) => ({ items: i.memos.map((m) => ({ ref: m.ref, facts: ["리허설: 금요일 저녁 7시"], considerations: [] })) }),
+      chat: (i) => ({ answer: "리허설은 금요일 저녁에 하세요.", used_refs: i.knowledge.map((k) => k.ref) }),
+    }));
     const t = await askInProject(s.bob, s.projectId, { question: "리허설 언제 해?" }, rec.provider);
     expect(t.answer).toBe("리허설은 금요일 저녁에 하세요.");
     const k = rec.calls.chat[0]!.knowledge;
-    expect(k.find((x) => x.text === SECRET)).toMatchObject({ aiOnly: true });
-    expect(k.find((x) => x.text === "발표 슬라이드는 5장 이내")).toMatchObject({ aiOnly: false });
+    // 다른 팀원(bob)이 물으면 원문은 넘어가지 않고 전달용 정리만 넘어간다
+    expect(k.find((x) => x.aiOnly)).toMatchObject({ aiOnly: true, mine: false, text: "", relay: { facts: ["리허설: 금요일 저녁 7시"], considerations: [] } });
+    expect(JSON.stringify(rec.calls.chat[0])).not.toContain("실험실 3층");
+    expect(k.find((x) => x.text === "발표 슬라이드는 5장 이내")).toMatchObject({ aiOnly: false, mine: false });
     expect(JSON.stringify(rec.calls.chat[0])).not.toMatch(/alice|@example/);
   });
 

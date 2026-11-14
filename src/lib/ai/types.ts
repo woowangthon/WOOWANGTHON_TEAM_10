@@ -26,7 +26,28 @@ export type CandidateForAi = {
   aiOnly?: boolean;
   /** 이 지식을 쓴(마지막으로 고친) 날짜. 지식 안의 '내일'·'다음 주'는 이 날 기준이다 */
   writtenOn?: string | null;
+  /**
+   * 지금 질문한 사람이 직접 쓴 지식인가 (회의록은 해당 없음). 지식 안의 "나"가 누구인지, 그 바람을 질문자의 것으로
+   * 다뤄도 되는지를 모델이 가릴 수 있게 한다. 이름·ID 는 넘기지 않는다.
+   */
+  mine?: boolean;
+  /**
+   * 다른 팀원의 'AI만 참고' 지식이면 원문(text) 대신 이 전달용 정리만 모델에 넘긴다 (relay.ts).
+   * text 에는 원문을 넣지 않는다.
+   */
+  relay?: Relay | null;
 };
+
+/** 다른 팀원에게 넘겨도 되는 형태로 바꾼 'AI만 참고' 메모 */
+export type Relay = {
+  /** 팀의 일에 대해 정해진 사실(일정·장소·할 일). 필요하면 그대로 전해도 된다 */
+  facts: string[];
+  /** 추천·선택에서 후보를 고르는 기준. 누구의 바람인지 드러나지 않는 중립 문구 */
+  considerations: string[];
+};
+
+/** 전달용 정리 만들기: 'AI만 참고' 메모 원문 여러 개 → 메모별 정리 */
+export type RelayInput = { memos: { ref: string; text: string }[] };
 
 export type Stance = "support" | "caution" | "objection" | "unclear";
 
@@ -74,10 +95,11 @@ export type SummarizeInput = { memos: string[] };
  *            section: direct | link_reason | ai_extension | objection | extra
  *  chat      → { answer, used_refs[] }   (used_refs 는 화면에 보이지 않는 내부 기록)
  *  summarize → { text }
+ *  relay     → { items: [{ ref, facts[], considerations[] }] }
  */
 export type AiUsage = {
   model: string;
-  call: "restate" | "judge" | "advise" | "chat" | "summarize" | "recap" | "eval";
+  call: "restate" | "judge" | "advise" | "chat" | "summarize" | "recap" | "relay" | "eval";
   inputTokens: number;
   cachedTokens: number;
   outputTokens: number;
@@ -101,6 +123,8 @@ export interface AiProvider {
   chat(input: ChatInput, opts?: AiCallOptions): Promise<unknown>;
   summarize(input: SummarizeInput, opts?: AiCallOptions): Promise<unknown>;
   recap(input: RecapInput, opts?: AiCallOptions): Promise<unknown>;
+  /** 'AI만 참고' 메모를 다른 팀원에게 넘겨도 되는 형태로 바꾼다 → { items: [{ ref, facts[], considerations[] }] } */
+  relay(input: RelayInput, opts?: AiCallOptions): Promise<unknown>;
   /** 마지막으로 가져간 이후의 사용량(토큰·시간). 비용 기록용. 없으면 빈 배열. */
   drainUsage?(): AiUsage[];
 }

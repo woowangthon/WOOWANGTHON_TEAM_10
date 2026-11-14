@@ -35,6 +35,9 @@ export const noAiProvider: AiProvider = {
   recap: async () => {
     throw aiUnavailable();
   },
+  relay: async () => {
+    throw aiUnavailable();
+  },
 };
 
 let devFake: FakeProvider | undefined;

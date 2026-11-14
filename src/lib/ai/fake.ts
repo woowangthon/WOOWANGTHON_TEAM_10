@@ -4,7 +4,7 @@
 //  - 테스트에서는 overrides 로 악의적·잘못된 출력을 흉내 내 서버 검증을 시험한다.
 import { keywordTokens } from "../keywords.ts";
 import { clip } from "../validate.ts";
-import type { AdviseInput, AiProvider, ChatInput, JudgeInput, RecapInput, RestateInput, SummarizeInput } from "./types.ts";
+import type { AdviseInput, AiProvider, ChatInput, JudgeInput, RecapInput, RelayInput, RestateInput, SummarizeInput } from "./types.ts";
 
 export const FAKE_LABEL = "【개발용 가짜 응답】";
 
@@ -15,6 +15,7 @@ type Overrides = {
   chat?: (input: ChatInput) => unknown;
   summarize?: (input: SummarizeInput) => unknown;
   recap?: (input: RecapInput) => unknown;
+  relay?: (input: RelayInput) => unknown;
 };
 
 export class FakeProvider implements AiProvider {
@@ -52,14 +53,22 @@ export class FakeProvider implements AiProvider {
   async chat(input: ChatInput): Promise<unknown> {
     if (this.overrides.chat) return this.overrides.chat(input);
     const tokens = keywordTokens(input.question);
-    const used = input.knowledge.filter((k) => tokens.some((t) => k.text.toLowerCase().includes(t)));
-    const hint = used.length ? ` 참고: ${used.map((k) => clip(k.text, 40)).join(" / ")}` : "";
+    // 다른 팀원의 'AI만 참고' 지식은 원문 없이 전달용 정리만 온다
+    const body = (k: ChatInput["knowledge"][number]) => (k.relay ? [...k.relay.facts, ...k.relay.considerations].join(" ") : k.text);
+    const used = input.knowledge.filter((k) => tokens.some((t) => body(k).toLowerCase().includes(t)));
+    const hint = used.length ? ` 참고: ${used.map((k) => clip(body(k), 40)).join(" / ")}` : "";
     return { answer: `${FAKE_LABEL} "${clip(input.question, 40)}"에 대한 답입니다.${hint}`, used_refs: used.map((k) => k.ref) };
   }
 
   async summarize(input: SummarizeInput): Promise<unknown> {
     if (this.overrides.summarize) return this.overrides.summarize(input);
     return { text: `${FAKE_LABEL} ${input.memos.map((m) => clip(m, 60)).join(" / ")}` };
+  }
+
+  /** 가짜 전달용 정리: 원문 앞부분을 '전할 사실' 하나로 돌려준다(표시 붙임). 실제 모델처럼 바람을 걸러 내지는 않는다. */
+  async relay(input: RelayInput): Promise<unknown> {
+    if (this.overrides.relay) return this.overrides.relay(input);
+    return { items: input.memos.map((m) => ({ ref: m.ref, facts: [`${FAKE_LABEL} ${clip(m.text.replace(/\s+/g, " "), 50)}`], considerations: [] })) };
   }
 
   async recap(input: RecapInput): Promise<unknown> {
