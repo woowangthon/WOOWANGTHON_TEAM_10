@@ -189,7 +189,7 @@ describe("모델 호출 시간 제한", () => {
     let calls = 0;
     const slow: AiProvider = {
       ...new FakeProvider(), name: "fake", isAi: true,
-      restate: async () => ({}), judge: async () => ({}), advise: async () => ({}), summarize: async () => ({}), recap: async () => ({}),
+      restate: async () => ({}), judge: async () => ({}), advise: async () => ({}), summarize: async () => ({}), recap: async () => ({}), relay: async () => ({ items: [] }),
       chat: (_i, o) => new Promise((resolve, reject) => {
         calls++;
         const t = setTimeout(() => resolve({ answer: "팀원이 공유한 메모에 따르면 5장이에요.", used_refs: [] }), 600); // 출처 규칙 위반 → 다시 쓰게 함

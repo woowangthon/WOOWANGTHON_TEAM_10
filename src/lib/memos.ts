@@ -11,6 +11,7 @@ import { AiTimeout, aiTimeoutMs, withTimeout } from "./ai/timeout.ts";
 import type { AiProvider } from "./ai/types.ts";
 import { audit, getPool, withTx } from "./db.ts";
 import { AppError, badRequest, conflict, notFound } from "./errors.ts";
+import { assertCanShare } from "./limits.ts";
 import { contentHash, invalidateAdviceForNote, reviseAndShare } from "./notes.ts";
 import { restatementWarnings } from "./restate-check.ts";
 import { bool, cleanText, text, uuid } from "./validate.ts";
@@ -143,6 +144,7 @@ export async function shareSummary(
       );
       if (own.rows[0].c !== sources.length) throw notFound();
     }
+    await assertCanShare(tx, userId, teamId, visibility);
     const n = await tx.query(
       "insert into notes (team_id, author_id, allow_external_ai, origin, visibility) values ($1, $2, $3, 'summary', $4) returning id",
       [teamId, userId, allowExternalAi, visibility],
@@ -201,11 +203,13 @@ export async function setVisibility(userId: string, noteId: string, input: { vis
   if (input.visibility !== "team" && input.visibility !== "ai_only") throw badRequest("공유 범위 값이 올바르지 않습니다.");
   const visibility = input.visibility;
   return withTx(async (tx) => {
-    const r = await tx.query("select team_id, author_id, origin, visibility from notes where id = $1 for update", [noteId]);
+    const r = await tx.query("select team_id, author_id, origin, visibility, share_state from notes where id = $1 for update", [noteId]);
     const n = r.rows[0];
     if (!n || n.author_id !== userId || n.origin !== "summary") throw notFound();
     await requireMembership(tx, userId, n.team_id);
     if (n.visibility === visibility) return { noteId, visibility };
+    // 'AI만 참고'로 바꾸는 것도 그 범위의 상한을 따른다 (공유 중이 아닌 것은 다시 공유할 때 검사한다)
+    if (visibility === "ai_only" && n.share_state === "shared") await assertCanShare(tx, userId, n.team_id, "ai_only", noteId);
     await tx.query(
       "update notes set visibility = $2, allow_external_ai = (allow_external_ai or $2 = 'ai_only'), updated_at = now() where id = $1",
       [noteId, visibility],

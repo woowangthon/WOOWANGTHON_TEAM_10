@@ -21,6 +21,8 @@ export type Candidate = {
   meetingDate: string | null;
   /** 팀원에게 보이지 않고 AI 만 참고하는 메모 */
   aiOnly: boolean;
+  /** 쓴 사람 (회의록은 탈퇴하면 null). 모델·화면에는 넘기지 않는다: 질문자 본인의 것인지 가리는 데에만 쓴다 */
+  authorId: string | null;
   /** 이 버전을 쓴 날짜 (한국 시간, YYYY-MM-DD). '내일'·'다음 주' 같은 말의 기준 */
   writtenOn: string | null;
   /** 작업 맥락의 키워드 중 이 메모에 나타난 개수 */
@@ -39,7 +41,17 @@ export type SearchOptions = {
    * 근거 원문을 보여주는 이전 조언 흐름에서는 끈다(팀원에게 원문이 보이므로).
    */
   includeAiOnly?: boolean;
+  /**
+   * 질문한 사람. 주면 "다른 사람의 'AI만 참고' 메모"가 후보에서 차지하는 수를 maxOtherAiOnly 로 제한한다.
+   * 'AI만 참고' 메모는 팀장에게도 보이지 않으므로, 누군가 많이 만들어 공개 메모·회의록을 후보에서 밀어내거나
+   * 작은 팀의 "전부 넘기기"를 끄지 못하게 하기 위해서다. 본인의 'AI만 참고' 메모는 제한하지 않는다.
+   */
+  viewerId?: string;
+  maxOtherAiOnly?: number;
 };
+
+/** 다른 사람의 'AI만 참고' 메모가 한 번의 후보에서 차지할 수 있는 기본 최대 수 */
+export const MAX_OTHER_AI_ONLY = 10;
 
 /** 권한 확인이 끝난 뒤 내부에서 부르는 검색. */
 export async function findCandidates(teamId: string, query: string, opts: SearchOptions): Promise<Candidate[]> {
@@ -48,7 +60,8 @@ export async function findCandidates(teamId: string, query: string, opts: Search
   const r = await getPool().query(
     `with eligible as (
        select v.id as version_id, n.id as note_id, v.raw_text, v.restated, v.kind, v.search_text, n.updated_at,
-              n.origin, n.title, n.meeting_date::text as meeting_date, n.visibility,
+              n.origin, n.title, n.meeting_date::text as meeting_date, n.visibility, n.author_id,
+              ($7::uuid is not null and n.visibility = 'ai_only' and n.author_id is distinct from $7::uuid) as other_private,
               to_char(v.created_at at time zone 'Asia/Seoul', 'YYYY-MM-DD') as written_on,
               n.allow_external_ai
        from notes n
@@ -61,15 +74,21 @@ export async function findCandidates(teamId: string, query: string, opts: Search
          and ($6::boolean or n.visibility = 'team')
      ), scored as (
        select e.*,
-              (select count(*) from unnest($2::text[]) w where word_similarity(w, e.search_text) >= 0.5)::int as hits,
-              count(*) over () as total
+              (select count(*) from unnest($2::text[]) w where word_similarity(w, e.search_text) >= 0.5)::int as hits
        from eligible e
+     ), ranked as (
+       -- 다른 사람의 'AI만 참고' 메모는 그들끼리 순위를 매겨 정해진 수까지만 남긴다
+       select s.*, row_number() over (partition by s.other_private order by s.hits desc, s.updated_at desc, s.version_id) as rn
+       from scored s
+     ), capped as (
+       select r.*, count(*) over () as total from ranked r where not r.other_private or r.rn <= $8
      )
-     select * from scored
+     select * from capped
      where hits >= 1 or ($5::int > 0 and total <= $5)
      order by hits desc, updated_at desc
      limit $4`,
-    [teamId, tokens, opts.requireExternalAi, limit, opts.includeAllIfAtMost ?? 0, opts.includeAiOnly ?? false],
+    [teamId, tokens, opts.requireExternalAi, limit, opts.includeAllIfAtMost ?? 0, opts.includeAiOnly ?? false, opts.viewerId ?? null,
+     Math.max(0, opts.maxOtherAiOnly ?? MAX_OTHER_AI_ONLY)],
   );
   return r.rows.map((row) => ({
     versionId: row.version_id,
@@ -83,6 +102,7 @@ export async function findCandidates(teamId: string, query: string, opts: Search
     title: row.title ?? null,
     meetingDate: row.meeting_date ?? null,
     aiOnly: row.visibility === "ai_only",
+    authorId: (row.author_id as string | null) ?? null,
     writtenOn: row.written_on ?? null,
     hits: Number(row.hits),
     score: tokens.length ? row.hits / tokens.length : 0,

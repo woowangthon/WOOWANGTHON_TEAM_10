@@ -14,6 +14,7 @@ export const REQUIRED_MIGRATIONS: readonly string[] = [
   "008_email_free_accounts.sql",
   "009_consumed_auth_tickets.sql",
   "010_note_request_ids.sql",
+  "011_note_relays.sql",
 ];
 
 /** 요구하는 마이그레이션 중 DB 에 아직 적용되지 않은 것 (파일명 순서). */

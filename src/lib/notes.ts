@@ -9,6 +9,7 @@ import type pg from "pg";
 import { requireMembership } from "./access.ts";
 import { audit, getPool, withTx, type Db } from "./db.ts";
 import { badRequest, conflict, notFound } from "./errors.ts";
+import { assertCanCreateMemo, assertCanShare } from "./limits.ts";
 import { bool, cleanText, text, uuid } from "./validate.ts";
 
 export const NOTE_KINDS = ["proposal", "guess", "question", "objection"] as const;
@@ -164,6 +165,7 @@ export async function createNote(
     input.clientRequestId === undefined || input.clientRequestId === null ? null : uuid(input.clientRequestId, "clientRequestId");
   return withTx(async (tx) => {
     await requireMembership(tx, userId, teamId);
+    await assertCanCreateMemo(tx, userId, teamId);
     const n = await tx.query(
       `insert into notes (team_id, author_id, allow_external_ai, client_request_id) values ($1, $2, $3, $4)
        on conflict (author_id, client_request_id) where client_request_id is not null do nothing
@@ -273,6 +275,8 @@ export async function shareNote(userId: string, noteId: string, versionId: strin
     const latest = await latestVersion(tx, noteId);
     if (latest.id !== version.id) throw conflict("최신 버전만 공유할 수 있습니다.");
     if (version.intent_state === "unconfirmed") throw conflict("작성자가 의도를 확인한 버전만 공유할 수 있습니다.");
+    if (note.origin !== "meeting" && note.share_state !== "shared")
+      await assertCanShare(tx, userId, note.team_id, note.visibility === "ai_only" ? "ai_only" : "team", noteId);
     const body = buildSearchText(version.raw_text, version.restated);
     await tx.query("update note_versions set search_text = $1, index_state = 'ready' where id = $2", [
       note.title ? `${note.title}\n${body}` : body, // 회의록은 제목으로도 찾는다
@@ -321,6 +325,7 @@ export async function reviseAndShare(userId: string, noteId: string, rawTextInpu
     const note = await lockOwnMemo(tx, userId, noteId);
     // 개인 메모(공유 전)는 이 경로로 공유하지 않는다: 반드시 '메모 보기'에서 골라 확정한 정리로만 공유
     if (note.origin === "memo" && note.share_state === "draft") throw notFound();
+    if (note.share_state !== "shared") await assertCanShare(tx, userId, note.team_id, note.visibility === "ai_only" ? "ai_only" : "team", noteId);
     const latest = await latestVersion(tx, noteId);
     const v = await tx.query(
       `insert into note_versions (note_id, team_id, version, raw_text, content_hash, intent_state, confirmed_by, confirmed_at,

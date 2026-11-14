@@ -74,7 +74,9 @@ describe("출처 표시: 공개 메모·회의록은 밝히고, 'AI만 참고'�
     await askInProject(s.bob, s.projectId, { question: "정리해 줘" }, rec.provider);
     const k = rec.calls.chat[0]!.knowledge;
     expect(k.find((x) => x.text === "공개 메모")).toMatchObject({ aiOnly: false, meeting: null });
-    expect(k.find((x) => x.text === "숨긴 메모")).toMatchObject({ aiOnly: true });
+    // 다른 팀원의 'AI만 참고' 메모는 원문 없이 전달용 정리로 넘어간다 (tests/relay.test.ts)
+    expect(k.find((x) => x.aiOnly)).toMatchObject({ aiOnly: true, text: "", mine: false });
+    expect(k.some((x) => x.text === "숨긴 메모")).toBe(false);
     expect(k.find((x) => x.text === "회의 내용")).toMatchObject({ meeting: { date: "2026-11-06" } });
   });
 

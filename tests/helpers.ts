@@ -31,11 +31,11 @@ export const restated = (summary: string) => ({
   clarifying_question: null,
 });
 
-import type { AdviseInput, AiProvider, ChatInput, JudgeInput, RecapInput, RestateInput, SummarizeInput } from "../src/lib/ai/types.ts";
+import type { AdviseInput, AiProvider, ChatInput, JudgeInput, RecapInput, RelayInput, RestateInput, SummarizeInput } from "../src/lib/ai/types.ts";
 
 /** 제공자에 들어간 입력을 기록한다 (모델에 무엇이 전달되는지 검사용). */
 export function recording(p: AiProvider) {
-  const calls = { restate: [] as RestateInput[], judge: [] as JudgeInput[], advise: [] as AdviseInput[], chat: [] as ChatInput[], summarize: [] as SummarizeInput[], recap: [] as RecapInput[] };
+  const calls = { restate: [] as RestateInput[], judge: [] as JudgeInput[], advise: [] as AdviseInput[], chat: [] as ChatInput[], summarize: [] as SummarizeInput[], recap: [] as RecapInput[], relay: [] as RelayInput[] };
   const provider: AiProvider = {
     name: p.name,
     isAi: p.isAi,
@@ -45,6 +45,7 @@ export function recording(p: AiProvider) {
     chat: (i, o) => (calls.chat.push(i), p.chat(i, o)),
     summarize: (i, o) => (calls.summarize.push(i), p.summarize(i, o)),
     recap: (i, o) => (calls.recap.push(i), p.recap(i, o)),
+    relay: (i, o) => (calls.relay.push(i), p.relay(i, o)),
   };
   return { provider, calls };
 }

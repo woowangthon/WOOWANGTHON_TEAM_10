@@ -227,3 +227,45 @@ export function dropLeakySentences(answer: string, question = "", allowed: Citab
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
+
+// ---------- 전달용 정리 ----------
+
+const MAX_RELAY_LINES = 4;
+const MAX_RELAY_LINE = 100;
+/** 전달용 정리에 남으면 안 되는 것: 주소·메일·전화번호처럼 보이는 것 (지시문이 걸러 내지 못했을 때의 마지막 방어) */
+const RELAY_SECRET = /https?:\/\/|www\.|[\w.+-]+@[\w-]+\.[\w.]+|\d{2,4}[-.\s]\d{3,4}[-.\s]\d{4}/i;
+
+/** 고려할 점의 형식: "[주제] 방향". 주제는 답변 모델이 이 기준을 쓸 질문을 가리는 데 쓴다 */
+const CONSIDERATION_FORM = /^\[[^\[\]]{1,12}\]\s+\S/;
+/** 숫자나 금액. 요일·오전·오후 같은 일정 표현은 숫자가 아니라 걸리지 않는다 */
+const HAS_DIGIT = /[0-9０-９]|(만|천)\s?원/;
+
+function relayLines(value: unknown, consideration = false): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const v of value) {
+    if (typeof v !== "string") continue;
+    const line = squash(cleanText(v));
+    if (!line || line.length > MAX_RELAY_LINE || RELAY_SECRET.test(line)) continue;
+    // 고려할 점은 "[주제] 방향" 형식이어야 하고 숫자·금액·인원·분량을 담지 않는다. 어긋나면 버린다
+    // (구체적인 숫자가 남으면 답변에서 "발표는 10분이니"처럼 정해진 조건으로 쓰인다).
+    if (consideration && (!CONSIDERATION_FORM.test(line) || HAS_DIGIT.test(line))) continue;
+    if (!out.includes(line)) out.push(line);
+    if (out.length === MAX_RELAY_LINES) break;
+  }
+  return out;
+}
+
+/**
+ * 전달용 정리 출력 검증. 서버가 건넨 ref 만 인정하고, 줄 수·길이를 제한하고, 제어 문자를 지운다.
+ * 모델이 돌려주지 않은 ref 는 결과에 없다(호출자는 그 메모를 이번 답변에 쓰지 않는다).
+ */
+export function validateRelayOutput(raw: unknown, validRefs: ReadonlySet<string>): Map<string, { facts: string[]; considerations: string[] }> {
+  if (!isObj(raw) || !Array.isArray(raw.items)) throw new InvalidAiOutput("relay items missing");
+  const out = new Map<string, { facts: string[]; considerations: string[] }>();
+  for (const it of raw.items) {
+    if (!isObj(it) || typeof it.ref !== "string" || !validRefs.has(it.ref) || out.has(it.ref)) continue;
+    out.set(it.ref, { facts: relayLines(it.facts), considerations: relayLines(it.considerations, true) });
+  }
+  return out;
+}

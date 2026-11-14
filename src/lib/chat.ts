@@ -15,11 +15,13 @@ import { requireMembership } from "./access.ts";
 import { callAi, errorCode, finalize, markStale, recordInputs, recordUsage } from "./advice.ts";
 import { aiUnavailable } from "./ai/providers.ts";
 import { aiBudgetRemainingMs, aiTimeoutMs, withAiBudget } from "./ai/timeout.ts";
+import { PROMPT_VERSION } from "./ai/prompts.ts";
 import type { AiProvider, CandidateForAi, ChatInput, ProjectContext } from "./ai/types.ts";
 import { dropLeakySentences, InvalidAiOutput, sourceLeaks, validateChatOutput, type CitableUse } from "./ai/validate-output.ts";
 import { audit, getPool } from "./db.ts";
 import { notFound } from "./errors.ts";
 import { MAX_MEETING } from "./meetings.ts";
+import { isEmptyRelay, relaysFor } from "./relay.ts";
 import { findCandidates, type Candidate } from "./search.ts";
 import { cleanText, clip, text, uuid } from "./validate.ts";
 
@@ -45,6 +47,19 @@ const MAX_MEMORY = 4000;
 /** 최근 대화에서 밀려났지만 아직 요약되지 않아 그대로 넘기는 턴의 최대 수 (평소에는 MEMORY_FOLD_AT - 1 개까지 생긴다) */
 const MAX_PENDING_TURNS = MEMORY_FOLD_AT - 1;
 
+/**
+ * 이 버전부터 다른 팀원의 'AI만 참고' 메모는 원문 대신 전달용 정리로만 넘긴다(relay.ts).
+ * 그 전 지시문으로 만든 답변·요약 가운데 다른 사람의 'AI만 참고' 메모가 넘어갔던 것은, 쓴 사람의 바람이 질문자의 전제처럼
+ * 적혀 있을 수 있다. 그런 답변은 다음에 열 때 다시 쓰고, 그때까지 이어지는 대화에는 질문만 넘긴다.
+ */
+const RELAY_SINCE = "2026-11-14";
+/** r = advice_requests. 이전 지시문으로 만들었고 다른 사람의 'AI만 참고' 메모가 넘어간 요청 */
+const OUTDATED = `(coalesce(r.prompt_version, '') < '${RELAY_SINCE}' and exists (
+  select 1 from unnest(r.input_version_ids) o(id)
+  join note_versions ov on ov.id = o.id
+  join notes onote on onote.id = ov.note_id
+  where onote.visibility = 'ai_only' and onote.author_id is distinct from r.requester_id))`;
+
 type KnowledgeKind = "memo" | "meeting" | "private";
 const kindOf = (c: Candidate): KnowledgeKind => (c.origin === "meeting" ? "meeting" : c.aiOnly ? "private" : "memo");
 
@@ -65,10 +80,10 @@ async function historyFor(taskId: string, userId: string, before: string | null)
   const r = await getPool().query(
     `select * from (
        select r.question, r.created_at, r.created_at::text as at_text, i.body, r.input_version_ids,
-              coalesce((select bool_and(coalesce(n.current_version_id = v.id and n.share_state = 'shared' and n.allow_external_ai, false))
+              (coalesce((select bool_and(coalesce(n.current_version_id = v.id and n.share_state = 'shared' and n.allow_external_ai, false))
                         from unnest(r.input_version_ids) e(id)
                         left join note_versions v on v.id = e.id
-                        left join notes n on n.id = v.note_id), true) as inputs_live
+                        left join notes n on n.id = v.note_id), true) and not ${OUTDATED}) as inputs_live
        from advice_requests r
        join advice_items i on i.request_id = r.id and i.section = 'answer' and not i.purged
        where r.task_id = $1 and r.requester_id = $2 and r.kind = 'chat' and r.status = 'ok'
@@ -143,18 +158,23 @@ async function memoryFor(task: TaskRow, userId: string, cutoff: string | null, p
                       from unnest(m.input_version_ids) e(id)
                       left join note_versions v on v.id = e.id
                       left join notes n on n.id = v.note_id), true) as live,
-            m.input_version_ids
+            m.input_version_ids,
+            (coalesce(m.prompt_version, '') < '${RELAY_SINCE}' and exists (
+               select 1 from unnest(m.input_version_ids) o(id)
+               join note_versions ov on ov.id = o.id
+               join notes onote on onote.id = ov.note_id
+               where onote.visibility = 'ai_only' and onote.author_id is distinct from m.user_id)) as outdated
      from chat_memories m where m.task_id = $1 and m.user_id = $2`,
     [task.id, userId],
   );
-  let mem = m.rows[0] as { summary: string; covered_until: string; live: boolean; input_version_ids: string[] } | undefined;
-  if (mem && !mem.live) {
+  let mem = m.rows[0] as { summary: string; covered_until: string; live: boolean; input_version_ids: string[]; outdated: boolean } | undefined;
+  if (mem && (!mem.live || mem.outdated)) {
     await db.query("delete from chat_memories where task_id = $1 and user_id = $2", [task.id, userId]);
     mem = undefined;
   }
   const older = await db.query(
     `select * from (
-       select r.question, r.created_at, r.created_at::text as at_text, i.body, r.input_version_ids, ${LIVE_INPUTS} as inputs_live
+       select r.question, r.created_at, r.created_at::text as at_text, i.body, r.input_version_ids, (${LIVE_INPUTS} and not ${OUTDATED}) as inputs_live
        from advice_requests r
        join advice_items i on i.request_id = r.id and i.section = 'answer' and not i.purged
        where r.task_id = $1 and r.requester_id = $2 and r.kind = 'chat' and r.status = 'ok'
@@ -190,11 +210,11 @@ async function memoryFor(task: TaskRow, userId: string, cutoff: string | null, p
     const ids = [...new Set([...(mem?.input_version_ids ?? []), ...older.rows.filter((t) => t.inputs_live).flatMap((t) => t.input_version_ids as string[])])];
     const last = older.rows[older.rows.length - 1].at_text as string;
     await db.query(
-      `insert into chat_memories (task_id, user_id, summary, covered_until, input_version_ids, updated_at)
-       values ($1, $2, $3, $4::timestamptz, $5, now())
+      `insert into chat_memories (task_id, user_id, summary, covered_until, input_version_ids, prompt_version, updated_at)
+       values ($1, $2, $3, $4::timestamptz, $5, $6, now())
        on conflict (task_id, user_id) do update set summary = excluded.summary, covered_until = excluded.covered_until,
-         input_version_ids = excluded.input_version_ids, updated_at = now()`,
-      [task.id, userId, summary.trim().slice(0, MAX_MEMORY), last, ids],
+         input_version_ids = excluded.input_version_ids, prompt_version = excluded.prompt_version, updated_at = now()`,
+      [task.id, userId, summary.trim().slice(0, MAX_MEMORY), last, ids, PROMPT_VERSION],
     );
     return { memory: { summary: summary.trim().slice(0, MAX_MEMORY), ids }, pending: [], pendingIds: [] };
   } catch (err) {
@@ -229,7 +249,9 @@ async function answerWithinBudget(userId: string, task: TaskRow, requestId: stri
     const query = [question, ...history.map((h) => h.question).reverse(), project.title, project.purpose, project.audience, project.constraints]
       .filter(Boolean)
       .join("\n");
-    const found = await findCandidates(task.team_id, query, { requireExternalAi: true, limit: MAX_KNOWLEDGE, includeAllIfAtMost: MAX_KNOWLEDGE, includeAiOnly: true });
+    const found = await findCandidates(task.team_id, query, {
+      requireExternalAi: true, limit: MAX_KNOWLEDGE, includeAllIfAtMost: MAX_KNOWLEDGE, includeAiOnly: true, viewerId: userId,
+    });
     // 다시 쓰기라면 이전 입력 기록을 이번 입력으로 바꾼다 (지식이 없으면 비움)
     const recorded = found.length ? await recordInputs(requestId, task.team_id, found) : [];
     // 입력 기록 = 이번 검색으로 넘긴 지식 + 이어서 넘긴 이전 답변·대화 기억이 받았던 지식 (다시 쓰기라면 이전 기록을 바꾼다).
@@ -242,16 +264,31 @@ async function answerWithinBudget(userId: string, task: TaskRow, requestId: stri
     // 입력을 기록한 뒤 공개 범위를 다시 읽는다. 검색과 기록 사이에 범위가 바뀌었다면 바뀐 범위로 넘긴다
     // (기록 뒤의 변경은 notes.ts 가 이 요청을 무효화한다).
     const live = recorded.length ? await withCurrentVisibility(recorded) : [];
-    const byRef = new Map<string, Candidate>(live.map((c, i) => [`N${i + 1}`, c]));
-    const knowledge: CandidateForAi[] = [...byRef].map(([ref, c]) => ({
-      ref,
-      text: c.origin === "meeting" ? clip(c.rawText, MAX_MEETING_CHARS) : c.rawText,
-      summary: c.summary,
-      conditions: c.conditions,
-      meeting: c.origin === "meeting" ? { title: c.title ?? "", date: c.meetingDate ?? "" } : null,
-      aiOnly: c.aiOnly,
-      writtenOn: c.origin === "meeting" ? null : c.writtenOn,
-    }));
+    // 다른 팀원의 'AI만 참고' 메모는 원문을 넘기지 않는다. 전달용 정리만 넘기고, 정리가 없거나 넘길 것이 없으면 뺀다.
+    const isMine = (c: Candidate) => c.origin !== "meeting" && c.authorId === userId;
+    const othersPrivate = live.filter((c) => c.aiOnly && !isMine(c));
+    const relays = await relaysFor(provider, othersPrivate.map((c) => ({ versionId: c.versionId, rawText: c.rawText })));
+    const passable = live.filter((c) => {
+      if (!c.aiOnly || isMine(c)) return true;
+      const relay = relays.get(c.versionId);
+      return !!relay && !isEmptyRelay(relay);
+    });
+    const byRef = new Map<string, Candidate>(passable.map((c, i) => [`N${i + 1}`, c]));
+    const knowledge: CandidateForAi[] = [...byRef].map(([ref, c]) => {
+      const relay = c.aiOnly && !isMine(c) ? relays.get(c.versionId)! : null;
+      return {
+        ref,
+        // 전달용 정리로 넘기는 지식은 원문을 싣지 않는다
+        text: relay ? "" : c.origin === "meeting" ? clip(c.rawText, MAX_MEETING_CHARS) : c.rawText,
+        summary: relay ? null : c.summary,
+        conditions: relay ? [] : c.conditions,
+        meeting: c.origin === "meeting" ? { title: c.title ?? "", date: c.meetingDate ?? "" } : null,
+        aiOnly: c.aiOnly,
+        writtenOn: c.origin === "meeting" || relay ? null : c.writtenOn,
+        mine: isMine(c),
+        relay,
+      };
+    });
 
     const kinds = new Map([...byRef].map(([ref, c]) => [ref, kindOf(c)] as const));
     const me = await db.query("select display_name from users where id = $1", [userId]);
@@ -267,6 +304,8 @@ async function answerWithinBudget(userId: string, task: TaskRow, requestId: stri
       // 이전 답변·기억을 읽은 뒤 입력을 기록하기 전 사이에 원래 지식이 지워졌다면 저장하지 않는다
       presentIds: inputIds,
     });
+    // 어떤 지시문으로 만든 답변인지 남긴다 (사용량 기록이 없는 제공자에서도). 이전 지시문의 답변을 가려 다시 쓰는 데 쓴다.
+    await db.query("update advice_requests set prompt_version = $2 where id = $1", [requestId, PROMPT_VERSION]);
   } catch (err) {
     const code = errorCode(err);
     console.error("chat failed", code, (err as Error)?.name, code === "ai_error" ? String((err as Error)?.message).slice(0, 200) : "");
@@ -379,7 +418,7 @@ export type ChatSource =
 
 const TURN_SQL = `
   select r.id, r.question, r.status, r.error, r.created_at,
-         i.body, coalesce(i.purged, false) as purged,
+         i.body, coalesce(i.purged, false) as purged, ${OUTDATED} as outdated,
          coalesce((select bool_and(coalesce(n.current_version_id = v.id and n.share_state = 'shared' and n.allow_external_ai, false))
                    from unnest(i.evidence_version_ids) e(id)
                    left join note_versions v on v.id = e.id
@@ -395,7 +434,8 @@ const TURN_SQL = `
   left join advice_items i on i.request_id = r.id and i.section = 'answer'`;
 
 function toTurn(row: Record<string, any>): ChatTurn {
-  const stale = row.status === "invalidated" || row.purged || (row.status === "ok" && !row.evidence_live);
+  // outdated: 이전 지시문으로 만든 답변에 다른 사람의 'AI만 참고' 메모가 넘어갔다. 조용히 다시 쓴다
+  const stale = row.status === "invalidated" || row.purged || (row.status === "ok" && (!row.evidence_live || row.outdated));
   return {
     id: row.id,
     question: row.question,

@@ -12,6 +12,7 @@ import type { PoolClient } from "pg";
 import { requireMembership } from "./access.ts";
 import { audit, getPool, withTx } from "./db.ts";
 import { AppError, badRequest, conflict, notFound } from "./errors.ts";
+import { assertCanCreateMeeting } from "./limits.ts";
 import { contentHash, invalidateAdviceForNote, purgeAdviceForNote } from "./notes.ts";
 import { bool, text, uuid } from "./validate.ts";
 
@@ -60,6 +61,7 @@ export async function createMeeting(userId: string, teamId: string, input: Meeti
   const allowExternalAi = bool(input.allowExternalAi, "AI 참고 허용", true);
   return withTx(async (tx) => {
     await requireMembership(tx, userId, teamId);
+    await assertCanCreateMeeting(tx, teamId);
     const n = await tx.query(
       `insert into notes (team_id, author_id, allow_external_ai, origin, title, meeting_date)
        values ($1, $2, $3, 'meeting', $4, $5) returning id`,
