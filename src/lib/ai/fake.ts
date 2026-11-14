@@ -65,10 +65,10 @@ export class FakeProvider implements AiProvider {
     return { text: `${FAKE_LABEL} ${input.memos.map((m) => clip(m, 60)).join(" / ")}` };
   }
 
-  /** 가짜 전달용 정리: 원문 앞부분을 '전할 사실' 하나로 돌려준다(표시 붙임). 실제 모델처럼 바람을 걸러 내지는 않는다. */
+  /** 가짜 전달용 정리: 원문 앞부분을 '고려할 점' 하나로 돌려준다(표시 붙임). 실제 모델처럼 바람을 걸러 내지는 않는다. */
   async relay(input: RelayInput): Promise<unknown> {
     if (this.overrides.relay) return this.overrides.relay(input);
-    return { items: input.memos.map((m) => ({ ref: m.ref, facts: [`${FAKE_LABEL} ${clip(m.text.replace(/\s+/g, " "), 50)}`], considerations: [] })) };
+    return { items: input.memos.map((m) => ({ ref: m.ref, facts: [], considerations: [`[참고] ${FAKE_LABEL} ${clip(m.text.replace(/[\s0-9０-９]+/g, " "), 50)}`] })) };
   }
 
   async recap(input: RecapInput): Promise<unknown> {

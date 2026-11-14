@@ -35,7 +35,9 @@ export async function relaysFor(provider: AiProvider, sources: Source[]): Promis
     "select version_id, facts, considerations from note_relays where version_id = any($1::uuid[]) and relay_version = $2",
     [sources.map((s) => s.versionId), RELAY_VERSION],
   );
-  for (const r of cached.rows) out.set(r.version_id as string, { facts: strings(r.facts), considerations: strings(r.considerations) });
+  // 다른 팀원의 「AI만 참고」에 적힌 사실(정해진 일정 포함)은 전하지 않는다: 팀원이 확인할 수 없는 내용이 사실처럼 전해지기 때문이다.
+  // 모델이 facts 를 채워도 여기서 버린다. 저장된 값이 있어도 읽지 않는다.
+  for (const r of cached.rows) out.set(r.version_id as string, { facts: [], considerations: strings(r.considerations) });
 
   const missing = sources.filter((s) => !out.has(s.versionId)).slice(0, MAX_NEW_RELAYS);
   if (!missing.length) return out;
@@ -43,7 +45,8 @@ export async function relaysFor(provider: AiProvider, sources: Source[]): Promis
     const refs = new Map<string, Source>(missing.map((s, i) => [`P${i + 1}`, s]));
     const raw = await callAi((signal) => provider.relay({ memos: [...refs].map(([ref, s]) => ({ ref, text: s.rawText })) }, { signal }));
     const made = validateRelayOutput(raw, new Set(refs.keys()));
-    for (const [ref, relay] of made) {
+    for (const [ref, madeRelay] of made) {
+      const relay: Relay = { facts: [], considerations: madeRelay.considerations };
       const versionId = refs.get(ref)!.versionId;
       // 그 사이 메모가 지워졌다면(버전이 없음) 저장하지 않는다: 외래키 위반 대신 건너뛴다
       const saved = await db.query(

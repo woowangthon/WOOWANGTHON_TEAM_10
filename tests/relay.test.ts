@@ -40,6 +40,17 @@ async function setup() {
 const ASK = { question: "이번 일본 여행 여행지를 추천해줘" };
 
 describe("다른 팀원의 'AI만 참고' 메모는 원문 대신 전달용 정리로만 넘어간다", () => {
+  it("모델이 '전할 사실'만 돌려준 메모(정해진 일정 등)는 다른 팀원의 답변에 쓰이지 않고, 쓴 사람에게는 쓰인다", async () => {
+    const s = await setup();
+    const rec = provider({ relay: (i) => ({ items: i.memos.map((m) => ({ ref: m.ref, facts: ["멘토 미팅: 화요일 오후 2시"], considerations: [] })) }) });
+    await askInProject(s.user1, s.projectId, ASK, rec.provider);
+    expect(rec.calls.chat[0]!.knowledge).toHaveLength(0);
+    expect(JSON.stringify(rec.calls.chat[0])).not.toContain("멘토 미팅");
+    const saved = await getPool().query("select facts from note_relays");
+    expect(saved.rows.map((r) => r.facts)).toEqual([[]]);
+    await askInProject(s.user3, s.projectId, ASK, rec.provider);
+    expect(rec.calls.chat[1]!.knowledge[0]).toMatchObject({ mine: true, text: WISH });
+  });
   it("다른 팀원이 물으면 답변 모델 입력에 원문이 없다", async () => {
     const s = await setup();
     const rec = provider();

@@ -251,7 +251,8 @@ async function main() {
     if (!ai.available) return "AI 미연결: 대화 확인 생략";
     const r = await B.call("POST", `/api/tasks/${taskId}/chat`, { question: "본선 리허설은 언제 어디서 해?", clientRequestId: crypto.randomUUID() });
     expect(r.data.status === "ok" && r.data.answer, `답변 상태 ${r.data.status}`);
-    expect(/금요일|7시|3층/.test(r.data.answer), "AI 가 'AI만 참고' 메모를 반영하지 않음");
+    // 2026-11-14: 다른 팀원의 「AI만 참고」에 적힌 사실(정해진 일정 포함)은 전하지 않는다
+    expect(!/7시|3층/.test(r.data.answer), "다른 팀원의 'AI만 참고'에 적힌 일정이 전해짐");
     expect(!r.data.answer.includes(hidden), "AI 가 원문을 그대로 옮김");
     expect(!/메모|회의|비공개|숨겨|공개하지/.test(r.data.answer), "'AI만 참고' 정보의 출처나 존재를 드러냄");
     expect(!JSON.stringify(r.data.sources ?? []).includes("리허설"), "'AI만 참고' 메모가 화면 출처에 나옴");
